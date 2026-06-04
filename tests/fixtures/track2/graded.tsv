@@ -1,0 +1,8 @@
+SrcEntity	QueryID	TgtEntity	Relation	Gain
+SA	Q0	T	equivalent	1.0
+SA	Q0	T	source_subsumed_by_target	0.6
+SA	Q0	T	source_subsumes_target	0.6
+SA	Q0	P1	source_subsumed_by_target	0.3
+SA	Q0	C1	source_subsumes_target	0.3
+SB	Q1	P1	source_subsumed_by_target	1.0
+SB	Q1	P2	source_subsumed_by_target	0.5

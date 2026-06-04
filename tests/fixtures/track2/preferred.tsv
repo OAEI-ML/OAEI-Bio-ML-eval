@@ -1,0 +1,3 @@
+SrcEntity	QueryID	TgtEntity	Relation
+SA	Q0	T	equivalent
+SB	Q1	P1	source_subsumed_by_target

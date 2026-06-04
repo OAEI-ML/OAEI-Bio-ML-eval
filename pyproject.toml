@@ -13,5 +13,9 @@ license = { text = "Apache-2.0" }
 # dependency-free; the equivalence half (Track 1) adds DeepOnto when it lands.
 dependencies = []
 
+[project.scripts]
+# self-score a Track 2 typed submission from the shell (see typed/cli.py)
+oaei-bioml-typed-score = "oaei_bioml_eval.typed.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/oaei_bioml_eval"]

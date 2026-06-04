@@ -1,0 +1,5 @@
+child_id	parent_id
+T	P1
+P1	P2
+C1	T
+C2	C1

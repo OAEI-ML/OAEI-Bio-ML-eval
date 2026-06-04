@@ -1,0 +1,3 @@
+SrcEntity	QueryID	TgtEntity	Relation	TgtCandidates
+SA	Q0	T	equivalent	['T', 'P1', 'C1', 'X']
+SB	Q1	P1	source_subsumed_by_target	['P1', 'P2', 'C1', 'Y']
