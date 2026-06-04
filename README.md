@@ -2,7 +2,7 @@
 
 Houses the common evaluation logic for both the public and private facing repos in OAEI-Bio-ML.
 
-Both `OAEI-Bio-ML` (participant-facing) and `OAEI-Bio-ML-private` (organiser-side) depend on this package, so participants self-score with the *same* code that produces the official leaderboard numbers _(besides the coherence-based metrics, still TBD)_.
+Both `OAEI-Bio-ML` (participant-facing) and `OAEI-Bio-ML-private` (organiser-side) depend on this package, so participants self-score with the *same* code that produces the official leaderboard numbers _(the coherence-based metrics are still TBD)_.
 
 Note that this repo is BioML-owned (signaled by the explicit naming convention). This is deliberate. Although logic may be shared across multiple OAEI-ML tracks (e.g., Bio-ML and BioKG-Align); the different tracks can evolve in different directions over time. As such, this repo should only ever be required as a dependency from `OAIE-Bio-ML` and `OAEI-Bio-ML-private`.
 
