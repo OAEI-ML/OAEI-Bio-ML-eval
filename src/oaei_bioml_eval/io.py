@@ -1,7 +1,7 @@
 """
 oaei_bioml_eval.io: the small tsv/json helpers the typed scorer needs.
 
-Vendored (BIOML-ADR-07) so the participant-facing scorer stays dependency-free —
+Vendored so the participant-facing scorer stays dependency-free —
 the heavy candi-pool side keeps its own copy. Lifted from BioKG-Align's `io.py`,
 trimmed to what the typed half actually reads and writes: TSV in/out, JSON out,
 and the `[a, b]` list-literal columns the answers/cands files use.

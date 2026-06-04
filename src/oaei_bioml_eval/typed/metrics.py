@@ -11,8 +11,8 @@ softens it with the graded gains from `relevance.compute_graded_relevance` (exac
 We deliberately keep the surface narrow — the preferred-pair family + H-nDCG (with
 its Q0/Q1 slices) + the diagnostics in `diagnostic.py`. The untyped binary
 ranking metrics, the macro-across-relations `typed_*` family, and the per-relation
-P/R/F1 that BioKG-Align's scorer also emitted are dropped (BIOML-ADR-15 keeps the
-public surface to the documented Track 2 families).
+P/R/F1 that BioKG-Align's scorer also emitted are dropped (we keep the public surface 
+to the documented Track 2 families).
 
 Two determinism choices follow the eval brief and so deviate from BioKG-Align:
 scores are **quantized** before the sort, and the ranking tie-break is **relation

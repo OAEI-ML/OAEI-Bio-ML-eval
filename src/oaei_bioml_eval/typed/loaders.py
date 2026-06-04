@@ -4,10 +4,10 @@ oaei_bioml_eval.typed.loaders: read the Track 2 gold + submission off disk.
 Everything keys on `(SrcEntity, QueryID)` — a source entity poses two queries (Q0
 equivalence, Q1 subsumption-only), so the source id alone isn't unique. The gold
 lives in `answers.tsv` (one row per query, carrying the per-query candidate pool);
-the submission is the NeurIPS **4-column block** TSV (BIOML-ADR-09), whose QueryID
-is recovered **positionally** against the answers row order. The graded-relevance
-and preferred-pair files are optional — the scorer can re-derive both from the
-answers + hierarchy via the frozen `relevance.py`.
+the submission is the NeurIPS **4-column block** TSV, whose QueryID is recovered 
+**positionally** against the answers row order. The graded-relevance and preferred-pair 
+files are optional — the scorer can re-derive both from the answers + hierarchy 
+via the frozen `relevance.py`.
 """
 from __future__ import annotations
 
@@ -124,7 +124,7 @@ def load_graded_relevance(
 # the participant submits a flat 4-column TSV (SrcEntity, TgtEntity, Relation,
 # Score) with no QueryID — `candidate_count * |relations|` rows per query (the
 # default 50 x 3 = 150), one block per answers row IN ORDER. We recover QueryID
-# positionally (BIOML-ADR-09) and re-emit the canonical (candidate x relation)
+# positionally and re-emit the canonical (candidate x relation)
 # cartesian product so the metrics see a complete, well-keyed row list.
 ##
 

@@ -13,9 +13,18 @@ license = { text = "Apache-2.0" }
 # dependency-free; the equivalence half (Track 1) adds DeepOnto when it lands.
 dependencies = []
 
+[project.optional-dependencies]
+# Track 1 global submissions may arrive as OAEI Alignment RDF; rdflib parses them.
+# (The metric core + the DeepOnto-TSV path stay dependency-free.)
+rdf = ["rdflib>=7.0"]
+# the equivalence half's official reasoner-based coherence (lands later).
+deeponto = ["deeponto", "rdflib>=7.0"]
+
 [project.scripts]
 # self-score a Track 2 typed submission from the shell (see typed/cli.py)
 oaei-bioml-typed-score = "oaei_bioml_eval.typed.cli:main"
+# self-score a Track 1 equivalence submission (see equivalence/cli.py)
+oaei-bioml-equivalence-score = "oaei_bioml_eval.equivalence.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/oaei_bioml_eval"]
