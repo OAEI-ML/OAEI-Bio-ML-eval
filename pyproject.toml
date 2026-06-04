@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "oaei-bioml-eval"
+version = "0.1.0.dev0"
+description = "Common evaluation/scoring logic for the OAEI Bio-ML tracks (public + private)."
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+# Kept deliberately light so participants can self-score with a small install.
+# The typed-ranking metrics (Track 2) and the structural-coherence proxy are
+# dependency-free; the equivalence half (Track 1) adds DeepOnto when it lands.
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oaei_bioml_eval"]
