@@ -117,6 +117,19 @@ def write_bridge_ofn(path: Path, pairs: Iterable[tuple[str, str]]) -> int:
     return len(ordered)
 
 
+# chars illegal inside a functional-syntax `<...>` IRI (RFC 3987) — a hit means the
+# "IRI" is really several run together (a corrupted alignment, or a malformed OWL),
+# which makes ROBOT swallow the next line(s) into one element and abort the merge.
+_BAD_IRI_CHARS = frozenset(' \t\n\r\x0b\x0c<>"{}|^`\\')
+
+
+def invalid_alignment_iris(pairs: Iterable[tuple[str, str]]) -> list[str]:
+    """alignment IRIs with embedded whitespace/control or other IRI-illegal chars, sorted + deduped"""
+    bad = {iri for pair in pairs for iri in pair
+           if any(ch in _BAD_IRI_CHARS or ord(ch) < 0x20 for ch in iri)}
+    return sorted(bad)
+
+
 def named_classes_in_owl(path: Path) -> set[str]:
     """
     the named-class IRIs of an OWL file via rdflib (the [reasoner] extra) — class
@@ -165,6 +178,15 @@ def _parse_unsatisfiable(log: str) -> set[str]:
 
 _TERMINATE_GRACE_SECONDS = 10.0
 
+_MALFORMED_IRI_HINT = (
+    "\n\nHINT: an input contains an IRI with embedded whitespace (several IRIs run together). "
+    "The bridge is validated before merge, so this is almost certainly a malformed/truncated input "
+    "OWL — e.g. a SNOMED RF2->OWL conversion that did not finish cleanly (the toolkit emits OWL "
+    "functional syntax, where a dropped `>` makes ROBOT read on across lines). Validate the OWL with:\n"
+    "    robot convert --input <that.owl> --output /tmp/check.owl\n"
+    "and re-run the conversion (more heap/disk) if that fails."
+)
+
 
 class RobotReasoner(CoherenceReasoner):
     """
@@ -207,12 +229,16 @@ class RobotReasoner(CoherenceReasoner):
         workdir = Path(tempfile.mkdtemp(prefix="coh-robot-"))
         bridge = workdir / "bridge.ofn"
         write_bridge_ofn(bridge, pairs)
-        merged = workdir / "merged.owl"
+        # Turtle, NOT RDF/XML: OWLAPI's RDF/XML renderer fails on SNOMED's digit-IRI annotation
+        # properties (the new model-component hierarchy) — and Turtle is what rdflib reads back for
+        # the denominator. all three of ttl/ofn/owx serialise cleanly; ttl is the one rdflib parses.
+        merged = workdir / "merged.ttl"
         code, log = self._run([*self._base_cmd(), "merge",
                                "--input", str(src_owl), "--input", str(tgt_owl), "--input", str(bridge),
                                "--output", str(merged)], timeout_s=None, label="merge")
         if code != 0:
-            raise RuntimeError(f"ROBOT merge failed (exit {code}):\n{log[-2000:]}")
+            hint = _MALFORMED_IRI_HINT if ("invalid characters" in log or "invalid-element-error" in log) else ""
+            raise RuntimeError(f"ROBOT merge failed (exit {code}):\n{log[-2000:]}{hint}")
         return MergedOntology(merged, workdir)
 
     def named_classes(self, merged: MergedOntology) -> tuple[str, ...]:

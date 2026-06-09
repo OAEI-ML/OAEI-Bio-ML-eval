@@ -323,5 +323,45 @@ class TestDeepOntoFixture(unittest.TestCase):
         self.assertEqual(set(hermit.unsatisfiable), {A, B})
 
 
+class TestMalformedIris(unittest.TestCase):
+    """a SNOMED RF2->OWL artifact: an entity 'IRI' that is several IRIs run together by newlines"""
+    _RUNON = "http://snomed.info/id/1295447006\nhttp://snomed.info/id/1295449009"
+
+    def test_validator_flags_embedded_whitespace(self):
+        from oaei_bioml_eval.coherence.reasoner import invalid_alignment_iris
+        self.assertEqual(invalid_alignment_iris([(A, B)]), [])
+        self.assertEqual(invalid_alignment_iris([(A, self._RUNON)]), [self._RUNON])
+
+    def test_global_raises_before_the_reasoner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sub = Path(tmp) / "sub.tsv"
+            write_tsv(sub, [{"SrcEntity": A, "TgtEntity": self._RUNON}], ["SrcEntity", "TgtEntity"])
+            with self.assertRaises(ValueError) as cm:   # clear message, not a cryptic ROBOT abort
+                score_global_coherence_files(sub, "/no/src.owl", "/no/tgt.owl")
+        self.assertIn("whitespace", str(cm.exception))
+
+    def test_skip_invalid_drops_the_bad_pair(self):
+        captured = {}
+
+        class _Stub(CoherenceReasoner):
+            def merge(self, s, t, pairs):
+                captured["pairs"] = sorted(set(pairs))
+                return MergedOntology(None)
+
+            def named_classes(self, merged):
+                return (A, B)
+
+            def unsatisfiable_classes(self, merged, *, which, timeout_s):
+                return UnsatResult((), which, 0.0)
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch("oaei_bioml_eval.coherence.report.load_reasoner", return_value=_Stub()):
+            sub = Path(tmp) / "sub.tsv"
+            write_tsv(sub, [{"SrcEntity": A, "TgtEntity": B},
+                            {"SrcEntity": A, "TgtEntity": self._RUNON}], ["SrcEntity", "TgtEntity"])
+            score_global_coherence_files(sub, "/no/src.owl", "/no/tgt.owl", skip_invalid=True)
+        self.assertEqual(captured["pairs"], [(A, B)])   # the run-on pair dropped, the clean one kept
+
+
 if __name__ == "__main__":
     unittest.main()

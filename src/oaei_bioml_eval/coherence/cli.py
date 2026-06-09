@@ -41,6 +41,8 @@ def _build_parser() -> argparse.ArgumentParser:
         p.add_argument("--timeout", dest="timeout_s", type=float, default=7200.0, help="HermiT wall-clock gate seconds -> ELK (7200)")
         p.add_argument("--backend", help="reasoner backend: robot (default) | deeponto | $OAEI_COHERENCE_BACKEND")
         p.add_argument("--robot-jar", dest="robot_jar", help="ROBOT jar (else `robot` on PATH / $ROBOT_JAR)")
+        p.add_argument("--skip-invalid-iris", dest="skip_invalid", action="store_true",
+                       help="drop correspondences whose IRIs are malformed (embedded whitespace) instead of erroring")
         p.add_argument("--output", dest="output_path", help="write the metric dict here as JSON")
 
     p_struct = sub.add_parser("structural", help="dependency-free structural proxy (STUB — open rule set)")
@@ -55,13 +57,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         metrics = score_global_coherence_files(
             args.submission, args.src_owl, args.tgt_owl, reasoner=args.reasoner,
             timeout_s=args.timeout_s, backend=args.backend, robot_jar=args.robot_jar,
-            output_path=args.output_path
+            skip_invalid=args.skip_invalid, output_path=args.output_path
         )
     elif args.kind == "local":
         metrics = score_local_coherence_files(
             args.submission, args.src_owl, args.tgt_owl, reasoner=args.reasoner,
             timeout_s=args.timeout_s, backend=args.backend, robot_jar=args.robot_jar,
-            output_path=args.output_path
+            skip_invalid=args.skip_invalid, output_path=args.output_path
         )
     else:
         metrics = score_structural_proxy_files(args.submission, output_path=args.output_path)

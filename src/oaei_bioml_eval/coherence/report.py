@@ -15,13 +15,37 @@ the merged signature (numerator subset of denominator).
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from ..io import write_json
 from . import structural
 from .loaders import load_committed_top1, load_global_pairs
 from .metrics import global_coherence_ratio, local_coherence_aggregate
-from .reasoner import CoherenceReasoner, UnsatResult, load_reasoner
+from .reasoner import CoherenceReasoner, UnsatResult, invalid_alignment_iris, load_reasoner
+
+
+def _validated_pairs(pairs, source, *, skip_invalid: bool) -> list[tuple[str, str]]:
+    """
+    reject (or, if skip_invalid, drop) correspondences whose IRIs are malformed —
+    embedded whitespace/control means several IRIs run together (a corrupted alignment,
+    or a malformed/truncated input OWL). caught here so the failure is a clear message,
+    not a cryptic ROBOT "invalid characters" abort mid-merge.
+    """
+    pairs = list(pairs)
+    bad = invalid_alignment_iris(pairs)
+    if not bad:
+        return pairs
+    preview = "\n".join("  " + repr(iri) for iri in bad[:5])
+    summary = (f"{len(bad)} alignment IRI(s) in {source} contain embedded whitespace/control characters "
+               f"— they look like multiple IRIs concatenated (a corrupted alignment, or a malformed/"
+               f"truncated input OWL). First:\n{preview}")
+    if not skip_invalid:
+        raise ValueError(summary + "\n\nFix the alignment/ontology, or pass skip_invalid=True "
+                         "(--skip-invalid-iris) to drop these correspondences and score the rest.")
+    bad_set = set(bad)
+    print(f"[coherence] WARNING: {summary}\n -> dropping these correspondences (skip_invalid).", file=sys.stderr)
+    return [(s, t) for s, t in pairs if s not in bad_set and t not in bad_set]
 
 
 def _classify_with_gate(reasoner: CoherenceReasoner, merged, *, prefer: str, timeout_s: float | None) -> UnsatResult:
@@ -58,10 +82,11 @@ def score_global_coherence_files(
     output_path: str | Path | None = None,
     backend: str | None = None,
     robot_jar: str | Path | None = None,
+    skip_invalid: bool = False,
     **reasoner_kwargs,
 ) -> dict:
     """global alignment + both OWLs -> unsatisfiable_count + the degree of incoherence"""
-    pairs = load_global_pairs(submission_path)
+    pairs = _validated_pairs(load_global_pairs(submission_path), submission_path, skip_invalid=skip_invalid)
     rsnr = load_reasoner(backend, robot_jar=robot_jar, **reasoner_kwargs)
     denominator, result = _coherence_over_pairs(
         rsnr, src_owl, tgt_owl, pairs, prefer=reasoner, timeout_s=timeout_s
@@ -89,6 +114,7 @@ def score_local_coherence_files(
     output_path: str | Path | None = None,
     backend: str | None = None,
     robot_jar: str | Path | None = None,
+    skip_invalid: bool = False,
     **reasoner_kwargs,
 ) -> dict:
     """
@@ -96,7 +122,7 @@ def score_local_coherence_files(
     classification of the committed alignment; a query is incoherent iff its src or
     top1 is unsatisfiable. (OPEN: per-query vs this batched blame; confirm with Jon.)
     """
-    committed = load_committed_top1(ranked_path)
+    committed = _validated_pairs(load_committed_top1(ranked_path), ranked_path, skip_invalid=skip_invalid)
     rsnr = load_reasoner(backend, robot_jar=robot_jar, **reasoner_kwargs)
     if not committed:
         result_used, lower = reasoner, reasoner == "elk"
