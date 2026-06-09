@@ -17,7 +17,13 @@ dependencies = []
 # Track 1 global submissions may arrive as OAEI Alignment RDF; rdflib parses them.
 # (The metric core + the DeepOnto-TSV path stay dependency-free.)
 rdf = ["rdflib>=7.0"]
-# the equivalence half's official reasoner-based coherence (lands later).
+# the official reasoner-based coherence, DEFAULT ROBOT backend: rdflib
+# parses ROBOT's merged/unsat OWL output; ROBOT itself is an external Java tool located
+# via PATH/$ROBOT_JAR (NOT pip — keeps JVM/torch out of eval's deps). pin ROBOT v1.9.10
+# for released numbers (unsat counts are reasoner-version-dependent).
+reasoner = ["rdflib>=7.0"]
+# the OPTIONAL in-process warm-JVM coherence fast-path + the equivalence
+# half's DeepOnto-TSV path. exploratory only — older HermiT/ELK than ROBOT.
 deeponto = ["deeponto", "rdflib>=7.0"]
 
 [project.scripts]
@@ -25,6 +31,8 @@ deeponto = ["deeponto", "rdflib>=7.0"]
 oaei-bioml-typed-score = "oaei_bioml_eval.typed.cli:main"
 # self-score a Track 1 equivalence submission (see equivalence/cli.py)
 oaei-bioml-equivalence-score = "oaei_bioml_eval.equivalence.cli:main"
+# organiser-computed Track 1 alignment coherence (see coherence/cli.py)
+oaei-bioml-coherence-score = "oaei_bioml_eval.coherence.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/oaei_bioml_eval"]
