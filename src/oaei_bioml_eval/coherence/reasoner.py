@@ -130,23 +130,28 @@ def invalid_alignment_iris(pairs: Iterable[tuple[str, str]]) -> list[str]:
     return sorted(bad)
 
 
-def named_classes_in_owl(path: Path) -> set[str]:
-    """
-    the named-class IRIs of an OWL file via rdflib (the [reasoner] extra) — class
-    declarations plus IRIs in class position (covers used-but-undeclared classes),
-    minus owl:Thing/Nothing and anonymous (blank-node) expressions.
-    """
-    from rdflib import Graph, URIRef                # type: ignore
-    from rdflib.namespace import OWL, RDF, RDFS     # type: ignore
+# the denominator: named classes of the MERGED ontology, via `robot query` (a Jena SPARQL
+# over the loaded model) — NOT rdflib, whose recursive Turtle parser blows the recursion
+# limit on SNOMED's deeply-nested class expressions, and NOT RDF/XML, which won't serialise
+# SNOMED's digit-IRI annotation properties. owl:Thing/Nothing are subtracted by the caller.
+_CLASS_SIGNATURE_SPARQL = (
+    "PREFIX owl: <http://www.w3.org/2002/07/owl#>\n"
+    "SELECT ?c WHERE { ?c a owl:Class . FILTER(isIRI(?c)) }\n"
+)
 
-    graph = Graph()
-    graph.parse(str(path))
-    nodes = set(graph.subjects(RDF.type, OWL.Class))
-    for predicate in (RDFS.subClassOf, OWL.equivalentClass, OWL.disjointWith):
-        for subject, _p, obj in graph.triples((None, predicate, None)):
-            nodes.add(subject)
-            nodes.add(obj)
-    return {str(n) for n in nodes if isinstance(n, URIRef)} - _TRIVIAL
+
+def read_iri_column(path: Path) -> set[str]:
+    """the single-column IRI results of a ROBOT SPARQL SELECT — skip the header, strip the <>"""
+    iris: set[str] = set()
+    with open(path, encoding="utf-8") as handle:
+        next(handle, None)   # the `?c` header row
+        for line in handle:
+            iri = line.strip()
+            if iri.startswith("<") and iri.endswith(">"):
+                iri = iri[1:-1]
+            if iri:
+                iris.add(iri)
+    return iris
 
 
 _UNSAT_IRI = re.compile(r"unsatisfiable:\s*(\S+)")          # ROBOT logs one line per unsatisfiable class
@@ -242,7 +247,14 @@ class RobotReasoner(CoherenceReasoner):
         return MergedOntology(merged, workdir)
 
     def named_classes(self, merged: MergedOntology) -> tuple[str, ...]:
-        return tuple(sorted(named_classes_in_owl(merged.handle)))
+        query = merged.workdir / "classes.rq"
+        query.write_text(_CLASS_SIGNATURE_SPARQL, encoding="utf-8")
+        out = merged.workdir / "classes.tsv"
+        code, log = self._run([*self._base_cmd(), "query", "--input", str(merged.handle),
+                               "--query", str(query), str(out)], timeout_s=None, label="query:classes")
+        if code != 0:
+            raise RuntimeError(f"ROBOT query (class signature) failed (exit {code}):\n{log[-2000:]}")
+        return tuple(sorted(read_iri_column(out) - _TRIVIAL))
 
     def unsatisfiable_classes(self, merged: MergedOntology, *, which: str, timeout_s: float | None) -> UnsatResult:
         if which not in ("hermit", "elk"):
