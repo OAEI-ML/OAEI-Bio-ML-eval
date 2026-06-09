@@ -1,0 +1,74 @@
+"""
+oaei_bioml_eval.coherence.cli: the organiser-computed coherence command.
+
+    oaei-bioml-coherence-score global       submission.rdf src.owl tgt.owl  --reasoner hermit
+    oaei-bioml-coherence-score local        ranked.tsv     src.owl tgt.owl  --reasoner hermit
+    oaei-bioml-coherence-score structural   submission.rdf                  (STUB — open rule set)
+
+Reports a degree of INCOHERENCE in [0, 1] (0 = clean, higher = worse). The default
+backend is ROBOT (located on PATH / $ROBOT_JAR; --robot-jar overrides); --backend
+deeponto uses the optional in-process warm-JVM fast-path. Prints the metric dict as
+JSON to stdout (and writes it when --output is set).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from typing import Sequence
+
+from .report import (
+    score_global_coherence_files,
+    score_local_coherence_files,
+    score_structural_proxy_files,
+)
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="oaei-bioml-coherence-score",
+        description="organiser-computed Track 1 alignment coherence (degree of INCOHERENCE; 0 = clean).",
+    )
+    sub = parser.add_subparsers(dest="kind", required=True)
+
+    for kind, sub_help, first in (("global", "global alignment -> unsatisfiable count + degree", "submission RDF/TSV"),
+                                  ("local", "rank-1 committed mappings -> mean per-query incoherence", "local.test.ranked.tsv")):
+        p = sub.add_parser(kind, help=sub_help)
+        p.add_argument("submission", help=first)
+        p.add_argument("src_owl", help="source ontology OWL")
+        p.add_argument("tgt_owl", help="target ontology OWL")
+        p.add_argument("--reasoner", choices=("hermit", "elk"), default="hermit", help="HermiT exact (default) or ELK (`>=`)")
+        p.add_argument("--timeout", dest="timeout_s", type=float, default=7200.0, help="HermiT wall-clock gate seconds -> ELK (7200)")
+        p.add_argument("--backend", help="reasoner backend: robot (default) | deeponto | $OAEI_COHERENCE_BACKEND")
+        p.add_argument("--robot-jar", dest="robot_jar", help="ROBOT jar (else `robot` on PATH / $ROBOT_JAR)")
+        p.add_argument("--output", dest="output_path", help="write the metric dict here as JSON")
+
+    p_struct = sub.add_parser("structural", help="dependency-free structural proxy (STUB — open rule set)")
+    p_struct.add_argument("submission", help="submission RDF/TSV")
+    p_struct.add_argument("--output", dest="output_path", help="write the metric dict here as JSON")
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+    if args.kind == "global":
+        metrics = score_global_coherence_files(
+            args.submission, args.src_owl, args.tgt_owl, reasoner=args.reasoner,
+            timeout_s=args.timeout_s, backend=args.backend, robot_jar=args.robot_jar,
+            output_path=args.output_path
+        )
+    elif args.kind == "local":
+        metrics = score_local_coherence_files(
+            args.submission, args.src_owl, args.tgt_owl, reasoner=args.reasoner,
+            timeout_s=args.timeout_s, backend=args.backend, robot_jar=args.robot_jar,
+            output_path=args.output_path
+        )
+    else:
+        metrics = score_structural_proxy_files(args.submission, output_path=args.output_path)
+    json.dump(metrics, sys.stdout, indent=2, sort_keys=True)
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
