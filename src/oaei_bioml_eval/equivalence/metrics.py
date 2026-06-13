@@ -28,8 +28,12 @@ DEFAULT_HITS_KS: tuple[int, ...] = (1, 5, 10)
 # and are then ordered deterministically, related discussion:
 # https://scicomp.stackexchange.com/questions/26137/are-blas-implementations-guaranteed-to-give-the-exact-same-result
 
-# counts are summed (not averaged) across tasks; everything else is a rate
-_COUNT_METRICS = frozenset({"predicted", "reference", "true_positive", "queries"})
+# counts are summed (not averaged) across tasks; everything else is a rate. the
+# `*_coherent`/`reference_*` counts are the `?`-flagged family's (global_prf1_coherence_aware).
+_COUNT_METRICS = frozenset({
+    "predicted", "reference", "true_positive", "queries",
+    "true_positive_coherent", "reference_positive", "reference_flagged", "predicted_flagged",
+})
 
 
 def _safe_mean(values: list[float]) -> float:
@@ -54,6 +58,41 @@ def global_prf1(predicted: set[tuple[str, str]], reference: set[tuple[str, str]]
         "predicted": float(len(predicted)),
         "reference": float(len(reference)),
         "true_positive": float(true_positive),
+    }
+
+
+def global_prf1_coherence_aware(
+    predicted: set[tuple[str, str]],
+    reference: set[tuple[str, str]],
+    flagged: set[tuple[str, str]],
+) -> dict[str, float]:
+    """
+    LargeBio `?`-flagged P/R/F1: incoherence-causing reference mappings (`flagged`, the
+    OAEI `?`/unknown relation) are IGNORED — neither a true nor a false positive, removed
+    from BOTH denominators. With R the complete reference, U = flagged, R+ = R - U:
+
+        precision = |A ∩ R+| / |A - U|   # a predicted `?` leaves the denominator
+        recall    = |A ∩ R+| / |R+|      # the `?` mappings are not in the recall denominator
+
+    Distinct `_coherent` keys — never overload the standard precision/recall/f1. The
+    standard global_prf1 over the complete reference (where `?` cells still count as
+    positives) is the companion metric; report both. Inspired by OAEI LargeBio (the UMLS
+    reference regime). Pure + space-agnostic like global_prf1.
+    """
+    positive = reference - flagged           # R+ = R - U
+    scored = predicted - flagged             # A - U  (a predicted `?` is neither TP nor FP)
+    true_positive = len(scored & positive)   # == |A ∩ R+| (|(A-U) ∩ R+| = |A ∩ R+|)
+    precision = true_positive / len(scored) if scored else 0.0
+    recall = true_positive / len(positive) if positive else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    return {
+        "precision_coherent": precision,
+        "recall_coherent": recall,
+        "f1_coherent": f1,
+        "true_positive_coherent": float(true_positive),
+        "reference_positive": float(len(positive)),         # |R+|
+        "reference_flagged": float(len(flagged)),           # |U| — the reference's incoherence load
+        "predicted_flagged": float(len(predicted & flagged)),
     }
 
 

@@ -12,8 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..io import write_json
-from .loaders import load_global_pairs, load_local_gold, load_local_ranking
-from .metrics import DEFAULT_HITS_KS, global_prf1, local_ranking_metrics
+from .loaders import load_global_pairs, load_global_reference, load_local_gold, load_local_ranking
+from .metrics import DEFAULT_HITS_KS, global_prf1, global_prf1_coherence_aware, local_ranking_metrics
 
 
 def score_global_files(
@@ -22,8 +22,19 @@ def score_global_files(
     *,
     output_path: str | Path | None = None,
 ) -> dict[str, float]:
-    """Subtask 1: set P/R/F1 of a global alignment vs the complete reference"""
-    metrics = global_prf1(load_global_pairs(submission_path), load_global_pairs(reference_path))
+    """
+    Subtask 1: BOTH global P/R/F1 families against the reference — the standard set
+    P/R/F1 over the complete reference, AND the LargeBio `?`-flagged `*_coherent` family
+    that ignores the reference's incoherence-causing (`?`) mappings. The `?` subset is 
+    auto-detected inline in an RDF reference; a TSV reference carries no `?` so the two 
+    families coincide. Distinct keys — the families never overwrite each other.
+    """
+    predicted = load_global_pairs(submission_path)
+    reference, flagged = load_global_reference(reference_path)
+    metrics = {
+        **global_prf1(predicted, reference),
+        **global_prf1_coherence_aware(predicted, reference, flagged),
+    }
     if output_path is not None:
         write_json(output_path, metrics)
     return metrics

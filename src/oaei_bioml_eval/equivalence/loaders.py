@@ -20,6 +20,7 @@ from .metrics import rank_by_score
 _RDF_SUFFIXES = {".rdf", ".xml", ".owl", ".ttl", ".n3"}
 _ALIGN_NS = "http://knowledgeweb.semanticweb.org/heterogeneity/alignment#"
 _EQUIVALENCE_RELATIONS = {"=", "equivalent", "equiv"}
+_FLAGGED_RELATION = "?"   # OAEI LargeBio: an incoherence-causing reference mapping
 
 
 def load_pairs_tsv(path: str | Path) -> set[tuple[str, str]]:
@@ -35,7 +36,9 @@ def load_pairs_rdf(path: str | Path) -> set[tuple[str, str]]:
     align = lambda local: URIRef(_ALIGN_NS + local)   # noqa: E731 — terse local alias
     graph = Graph()
     graph.parse(str(path))
-    cells = set(graph.subjects(RDF.type, align("Cell"))) or set(graph.subjects(align("entity1"), None))
+    # union, NOT `or`: a mixed file (some cells typed align:Cell, some only carrying align:entity1)
+    # would otherwise drop whichever set the `or` skips. Same BNode subjects dedupe, so this is safe.
+    cells = set(graph.subjects(RDF.type, align("Cell"))) | set(graph.subjects(align("entity1"), None))
     pairs: set[tuple[str, str]] = set()
     for cell in cells:
         entity1 = next(graph.objects(cell, align("entity1")), None)
@@ -52,6 +55,48 @@ def load_pairs_rdf(path: str | Path) -> set[tuple[str, str]]:
 def load_global_pairs(path: str | Path) -> set[tuple[str, str]]:
     """a global alignment (submission OR reference) -> `(src, tgt)` pairs; RDF or TSV by suffix"""
     return load_pairs_rdf(path) if Path(path).suffix.lower() in _RDF_SUFFIXES else load_pairs_tsv(path)
+
+
+def _load_reference_rdf(path: str | Path) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
+    """(R, U) from a reference RDF: R = all equivalence-or-`?` cells, U = the `?` cells"""
+    from rdflib import Graph, URIRef    # type: ignore
+    from rdflib.namespace import RDF    # type: ignore
+
+    align = lambda local: URIRef(_ALIGN_NS + local)   # noqa: E731 — terse local alias
+    graph = Graph()
+    graph.parse(str(path))
+    # union, NOT `or`: a mixed file (some cells typed align:Cell, some only carrying align:entity1)
+    # would otherwise drop whichever set the `or` skips. Same BNode subjects dedupe, so this is safe.
+    cells = set(graph.subjects(RDF.type, align("Cell"))) | set(graph.subjects(align("entity1"), None))
+    reference: set[tuple[str, str]] = set()
+    flagged: set[tuple[str, str]] = set()
+    for cell in cells:
+        entity1 = next(graph.objects(cell, align("entity1")), None)
+        entity2 = next(graph.objects(cell, align("entity2")), None)
+        relation = next(graph.objects(cell, align("relation")), None)
+        if entity1 is None or entity2 is None:
+            continue
+        pair = (str(entity1), str(entity2))
+        relation_text = "" if relation is None else str(relation).strip()
+        if relation_text == _FLAGGED_RELATION:
+            reference.add(pair)   # a `?` cell is still a reference mapping for the standard metric
+            flagged.add(pair)
+        elif relation_text == "" or relation_text in _EQUIVALENCE_RELATIONS:
+            reference.add(pair)
+    return reference, flagged
+
+
+def load_global_reference(path: str | Path) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
+    """
+    the complete reference + its `?`-flagged (incoherence-causing) subset -> `(R, U)`.
+    R is every equivalence-or-`?` cell (the standard metric counts `?` as a positive);
+    U is the `?` subset (ignored by the coherence-aware metric). Inline OAEI-canonical
+    `?` is auto-detected in an RDF reference; a TSV reference cannot carry `?` so
+    `U = ∅` (coherent == standard).
+    """
+    if Path(path).suffix.lower() in _RDF_SUFFIXES:
+        return _load_reference_rdf(path)
+    return load_pairs_tsv(path), set()
 
 
 def load_local_gold(path: str | Path) -> list[tuple[str, str]]:

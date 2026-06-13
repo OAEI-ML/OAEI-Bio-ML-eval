@@ -13,6 +13,7 @@ is separate + still deferred.
 from .metrics import (
     DEFAULT_HITS_KS,
     global_prf1,
+    global_prf1_coherence_aware,
     local_ranking_metrics,
     macro_average_across_tasks,
     rank_by_score,
@@ -21,6 +22,7 @@ from .metrics import (
 __all__ = [
     "DEFAULT_HITS_KS",
     "global_prf1",
+    "global_prf1_coherence_aware",
     "local_ranking_metrics",
     "macro_average_across_tasks",
     "rank_by_score",
