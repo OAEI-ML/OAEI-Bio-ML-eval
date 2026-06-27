@@ -20,7 +20,7 @@ from pathlib import Path
 
 from ..io import write_json
 from . import structural
-from .loaders import load_committed_top1, load_global_pairs
+from .loaders import load_committed_top1, load_global_pairs, load_relation_typed_correspondences
 from .metrics import global_coherence_ratio, local_coherence_aggregate
 from .reasoner import CoherenceReasoner, UnsatResult, invalid_alignment_iris, load_reasoner
 
@@ -45,7 +45,8 @@ def _validated_pairs(pairs, source, *, skip_invalid: bool) -> list[tuple[str, st
                          "(--skip-invalid-iris) to drop these correspondences and score the rest.")
     bad_set = set(bad)
     print(f"[coherence] WARNING: {summary}\n -> dropping these correspondences (skip_invalid).", file=sys.stderr)
-    return [(s, t) for s, t in pairs if s not in bad_set and t not in bad_set]
+    # preserve each item's arity (2-tuple `=` pair or 3-tuple `(s,t,rel)`) — only the IRI slots gate
+    return [item for item in pairs if tuple(item)[0] not in bad_set and tuple(item)[1] not in bad_set]
 
 
 def _classify_with_gate(reasoner: CoherenceReasoner, merged, *, prefer: str, timeout_s: float | None) -> UnsatResult:
@@ -96,6 +97,46 @@ def score_global_coherence_files(
         "global_coherence": global_coherence_ratio(count, union),
         "unsatisfiable_count": count,
         "union_class_count": union,
+        "reasoner_used": result.reasoner_used,
+        "lower_bound": result.reasoner_used == "elk",
+    }
+    if output_path is not None:
+        write_json(output_path, metrics)
+    return metrics
+
+
+def score_reference_coherence_files(
+    reference_path: str | Path,
+    src_owl: str | Path,
+    tgt_owl: str | Path,
+    *,
+    reasoner: str = "elk",
+    timeout_s: float = 7200.0,
+    output_path: str | Path | None = None,
+    backend: str | None = None,
+    robot_jar: str | Path | None = None,
+    skip_invalid: bool = False,
+    **reasoner_kwargs,
+) -> dict:
+    """
+    coherence of an Option-Two repaired REFERENCE: its kept `=`/`<=`/`>=` correspondences are
+    asserted as EquivalentClasses / SubClassOf (the bridge mirrors CoherenceCheckELK); `?`-flagged
+    cells are dropped (not asserted). Same merge/classify path as the submission scorer, so the
+    denominator + unsatisfiable count are directly comparable. Defaults to ELK (the EL `>=` lower
+    bound used for the SNOMED-scale references).
+    """
+    typed = _validated_pairs(load_relation_typed_correspondences(reference_path),
+                             reference_path, skip_invalid=skip_invalid)
+    rsnr = load_reasoner(backend, robot_jar=robot_jar, **reasoner_kwargs)
+    denominator, result = _coherence_over_pairs(
+        rsnr, src_owl, tgt_owl, typed, prefer=reasoner, timeout_s=timeout_s
+    )
+    union, count = len(denominator), len(result.unsatisfiable)
+    metrics = {
+        "global_coherence": global_coherence_ratio(count, union),
+        "unsatisfiable_count": count,
+        "union_class_count": union,
+        "asserted_correspondences": len(typed),
         "reasoner_used": result.reasoner_used,
         "lower_bound": result.reasoner_used == "elk",
     }

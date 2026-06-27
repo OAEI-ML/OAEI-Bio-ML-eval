@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..io import write_json
-from .loaders import load_global_pairs, load_global_reference, load_local_gold, load_local_ranking
+from .loaders import load_global_submission, load_global_reference, load_local_gold, load_local_ranking
 from .metrics import DEFAULT_HITS_KS, global_prf1, global_prf1_coherence_aware, local_ranking_metrics
 
 
@@ -21,16 +21,31 @@ def score_global_files(
     reference_path: str | Path,
     *,
     output_path: str | Path | None = None,
+    deprecated: object = None,
 ) -> dict[str, float]:
     """
     Subtask 1: BOTH global P/R/F1 families against the reference — the standard set
     P/R/F1 over the complete reference, AND the LargeBio `?`-flagged `*_coherent` family
-    that ignores the reference's incoherence-causing (`?`) mappings. The `?` subset is 
-    auto-detected inline in an RDF reference; a TSV reference carries no `?` so the two 
+    that ignores the reference's incoherence-causing (`?`) mappings. The `?` subset is
+    auto-detected inline in an RDF reference; a TSV reference carries no `?` so the two
     families coincide. Distinct keys — the families never overwrite each other.
+
+    Scoring is relation-agnostic (existence only): the submission is read with
+    load_global_submission (any asserted relation counts) and an Option-Two reference's
+    subsumption cells are positives, so a predicted `=` matching a reference `<`/`>` (or the
+    reverse) is credited — only the correspondence's existence is scored, never its relation.
+
+    `deprecated` (optional): an iterable of owl:deprecated / obsolete IRIs, OUT-OF-TASK. When
+    given, every correspondence touching one is dropped from the prediction AND the reference
+    (and its `?` set) before scoring — the same out-of-task treatment the organiser applies (only
+    the lite matchers predict any, so this changes their precision). Default None = no filtering.
     """
-    predicted = load_global_pairs(submission_path)
+    predicted = load_global_submission(submission_path)
     reference, flagged = load_global_reference(reference_path)
+    if deprecated:
+        dep = set(deprecated)
+        drop = lambda pairs: {(s, t) for (s, t) in pairs if s not in dep and t not in dep}
+        predicted, reference, flagged = drop(predicted), drop(reference), drop(flagged)
     metrics = {
         **global_prf1(predicted, reference),
         **global_prf1_coherence_aware(predicted, reference, flagged),

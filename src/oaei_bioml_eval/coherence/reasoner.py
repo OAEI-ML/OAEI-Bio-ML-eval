@@ -65,8 +65,10 @@ class CoherenceReasoner(ABC):
     name: str = "base"
 
     @abstractmethod
-    def merge(self, src_owl: Path, tgt_owl: Path, pairs: Iterable[tuple[str, str]]) -> MergedOntology:
-        """both OWLs + a bridge of one EquivalentClasses(src, tgt) per pair (named, IRIs sorted)"""
+    def merge(self, src_owl: Path, tgt_owl: Path, pairs: Iterable) -> MergedOntology:
+        """both OWLs + a bridge of one axiom per correspondence (named, IRIs sorted): `=` ->
+        EquivalentClasses(src, tgt), `<=`/`>=` -> SubClassOf. Items are `(src, tgt)` pairs (-> `=`)
+        or `(src, tgt, relation)` triples."""
 
     @abstractmethod
     def named_classes(self, merged: MergedOntology) -> tuple[str, ...]:
@@ -101,17 +103,53 @@ def load_reasoner(backend: str | None = None, *, robot_jar=None, java=None,
 # -----------------------------------
 ##
 
-def write_bridge_ofn(path: Path, pairs: Iterable[tuple[str, str]]) -> int:
+# bridge correspondences may carry an Option-Two relation. `=` -> EquivalentClasses; the
+# one-directional weakenings `<=`/`>=` (LogMap bare `<`/`>` aliased) -> SubClassOf, mirroring
+# CoherenceCheckELK.java (`<` = SubClassOf(s,t), `>` = SubClassOf(t,s)). A 2-tuple defaults to `=`,
+# so every existing caller (matcher submissions, all `=`) is unchanged.
+_BRIDGE_RELATION_ALIASES = {"<": "<=", ">": ">="}
+_BRIDGE_RELATIONS = frozenset({"=", "<=", ">="})
+
+
+def normalize_correspondences(items: Iterable) -> list[tuple[str, str, str]]:
     """
-    one EquivalentClasses(src, tgt) axiom per `=` correspondence, in OWL functional
-    syntax (.ofn — ROBOT reads it directly). NAMED classes only; IRIs sorted for a
-    canonical axiom set; each class declared so a stray IRI never reads as undeclared.
+    canonical sorted `(src, tgt, relation)` triples from a mix of 2-tuples (relation defaults to
+    `=`) and 3-tuples `(src, tgt, relation)`. `<`/`>` are aliased to `<=`/`>=`; self-pairs dropped;
+    deduped + sorted for a canonical axiom set. Raises on an unsupported relation symbol.
     """
-    ordered = sorted({(str(s), str(t)) for s, t in pairs if str(s) != str(t)})
-    iris = sorted({iri for pair in ordered for iri in pair})
+    out: set[tuple[str, str, str]] = set()
+    for item in items:
+        item = tuple(item)
+        src, tgt = str(item[0]), str(item[1])
+        relation = str(item[2]).strip() if len(item) >= 3 else "="
+        relation = _BRIDGE_RELATION_ALIASES.get(relation, relation)
+        if relation not in _BRIDGE_RELATIONS:
+            raise ValueError(f"bridge correspondence ({src}, {tgt}) has unsupported relation "
+                             f"{relation!r}; expected one of =, <=, >= (or bare < / >).")
+        if src != tgt:
+            out.add((src, tgt, relation))
+    return sorted(out)
+
+
+def write_bridge_ofn(path: Path, pairs: Iterable) -> int:
+    """
+    one bridge axiom per correspondence, in OWL functional syntax (.ofn — ROBOT reads it directly):
+    `=` -> EquivalentClasses(src, tgt); `<=` -> SubClassOf(src, tgt); `>=` -> SubClassOf(tgt, src)
+    (mirroring CoherenceCheckELK). Items are `(src, tgt)` pairs (default `=`) or `(src, tgt, rel)`
+    triples. NAMED classes only; IRIs sorted for a canonical axiom set; each class declared so a
+    stray IRI never reads as undeclared.
+    """
+    ordered = normalize_correspondences(pairs)
+    iris = sorted({iri for src, tgt, _ in ordered for iri in (src, tgt)})
     lines = ["Ontology(<https://w3id.org/oaei-bioml/coherence/bridge>"]
     lines += [f"  Declaration(Class(<{iri}>))" for iri in iris]
-    lines += [f"  EquivalentClasses(<{s}> <{t}>)" for s, t in ordered]
+    for src, tgt, relation in ordered:
+        if relation == "=":
+            lines.append(f"  EquivalentClasses(<{src}> <{tgt}>)")
+        elif relation == "<=":
+            lines.append(f"  SubClassOf(<{src}> <{tgt}>)")
+        else:   # ">="
+            lines.append(f"  SubClassOf(<{tgt}> <{src}>)")
     lines.append(")")
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
     return len(ordered)
@@ -124,8 +162,10 @@ _BAD_IRI_CHARS = frozenset(' \t\n\r\x0b\x0c<>"{}|^`\\')
 
 
 def invalid_alignment_iris(pairs: Iterable[tuple[str, str]]) -> list[str]:
-    """alignment IRIs with embedded whitespace/control or other IRI-illegal chars, sorted + deduped"""
-    bad = {iri for pair in pairs for iri in pair
+    """alignment IRIs with embedded whitespace/control or other IRI-illegal chars, sorted + deduped.
+    Inspects only the two IRI slots, so a relation-typed `(src, tgt, rel)` triple's `<=`/`>=` symbol
+    is never mistaken for a malformed IRI."""
+    bad = {iri for pair in pairs for iri in tuple(pair)[:2]
            if any(ch in _BAD_IRI_CHARS or ord(ch) < 0x20 for ch in iri)}
     return sorted(bad)
 
@@ -229,7 +269,7 @@ class RobotReasoner(CoherenceReasoner):
             env["ROBOT_JAVA_ARGS"] = f"-Xmx{self._heap}"
         return env
 
-    def merge(self, src_owl: Path, tgt_owl: Path, pairs: Iterable[tuple[str, str]]) -> MergedOntology:
+    def merge(self, src_owl: Path, tgt_owl: Path, pairs: Iterable) -> MergedOntology:
         import tempfile
         workdir = Path(tempfile.mkdtemp(prefix="coh-robot-"))
         bridge = workdir / "bridge.ofn"
@@ -319,7 +359,7 @@ class DeepOntoReasoner(CoherenceReasoner):
         from deeponto import init_jvm               # type: ignore
         init_jvm(self._heap)                        # deeponto guards against a double start
 
-    def merge(self, src_owl: Path, tgt_owl: Path, pairs: Iterable[tuple[str, str]]) -> MergedOntology:
+    def merge(self, src_owl: Path, tgt_owl: Path, pairs: Iterable) -> MergedOntology:
         self._ensure_jvm()
         from jpype import JArray, JClass                                # type: ignore
         from java.io import File                                        # type: ignore
@@ -331,9 +371,15 @@ class DeepOntoReasoner(CoherenceReasoner):
         merged = manager.loadOntologyFromOntologyDocument(File(str(src_owl)))
         target = manager.loadOntologyFromOntologyDocument(File(str(tgt_owl)))
         manager.addAxioms(merged, target.getAxioms())
-        for src, tgt in sorted({(str(s), str(t)) for s, t in pairs if str(s) != str(t)}):
-            operands = JArray(expr_type)([factory.getOWLClass(IRI.create(src)), factory.getOWLClass(IRI.create(tgt))])
-            manager.addAxiom(merged, factory.getOWLEquivalentClassesAxiom(operands))
+        for src, tgt, relation in normalize_correspondences(pairs):
+            src_cls, tgt_cls = factory.getOWLClass(IRI.create(src)), factory.getOWLClass(IRI.create(tgt))
+            if relation == "=":   # EquivalentClasses(src, tgt)
+                operands = JArray(expr_type)([src_cls, tgt_cls])
+                manager.addAxiom(merged, factory.getOWLEquivalentClassesAxiom(operands))
+            elif relation == "<=":   # SubClassOf(src, tgt)
+                manager.addAxiom(merged, factory.getOWLSubClassOfAxiom(src_cls, tgt_cls))
+            else:   # ">=" -> SubClassOf(tgt, src)
+                manager.addAxiom(merged, factory.getOWLSubClassOfAxiom(tgt_cls, src_cls))
         manager.removeOntology(target)
         return MergedOntology((manager, merged))
 

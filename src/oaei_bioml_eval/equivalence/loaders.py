@@ -20,6 +20,10 @@ from .metrics import rank_by_score
 _RDF_SUFFIXES = {".rdf", ".xml", ".owl", ".ttl", ".n3"}
 _ALIGN_NS = "http://knowledgeweb.semanticweb.org/heterogeneity/alignment#"
 _EQUIVALENCE_RELATIONS = {"=", "equivalent", "equiv"}
+# one-directional weakenings kept by an Option-Two reference (LogMap bare `<`/`>` and the
+# organiser-canonical `<=`/`>=`): coherence-aware but still a reference POSITIVE, since the
+# global task scores only the EXISTENCE of a correspondence, not its relation symbol.
+_SUBSUMPTION_RELATIONS = {"<", ">", "<=", ">="}
 _FLAGGED_RELATION = "?"   # OAEI LargeBio: an incoherence-causing reference mapping
 
 
@@ -53,12 +57,49 @@ def load_pairs_rdf(path: str | Path) -> set[tuple[str, str]]:
 
 
 def load_global_pairs(path: str | Path) -> set[tuple[str, str]]:
-    """a global alignment (submission OR reference) -> `(src, tgt)` pairs; RDF or TSV by suffix"""
+    """a global alignment (submission OR reference) -> `(src, tgt)` pairs; RDF or TSV by suffix.
+    Equivalence-only by design — the coherence pipeline reuses this to build EquivalentClasses
+    bridges, so it must NOT silently absorb subsumption cells. Use load_global_submission for the
+    relation-agnostic existence set the equivalence metric scores."""
     return load_pairs_rdf(path) if Path(path).suffix.lower() in _RDF_SUFFIXES else load_pairs_tsv(path)
 
 
+def load_global_submission(path: str | Path) -> set[tuple[str, str]]:
+    """
+    a global alignment SUBMISSION -> `(src, tgt)` pairs, RELATION-AGNOSTIC (existence-only).
+    The global task scores only WHETHER a correspondence exists, never its relation symbol, so a
+    matcher cell counts whatever it asserts (`=`/`<`/`>`/`<=`/`>=`); only a `?` cell — which a
+    matcher never emits — is not a positive assertion. This is what makes a predicted `=` matching
+    a reference subsumption (and the vice-versa) score as a hit. RDF or TSV by suffix. Distinct
+    from load_global_pairs, which stays equivalence-only for the coherence bridge.
+    """
+    if Path(path).suffix.lower() not in _RDF_SUFFIXES:
+        return load_pairs_tsv(path)
+    from rdflib import Graph, URIRef    # type: ignore
+    from rdflib.namespace import RDF    # type: ignore
+
+    align = lambda local: URIRef(_ALIGN_NS + local)   # noqa: E731 — terse local alias
+    graph = Graph()
+    graph.parse(str(path))
+    cells = set(graph.subjects(RDF.type, align("Cell"))) | set(graph.subjects(align("entity1"), None))
+    pairs: set[tuple[str, str]] = set()
+    for cell in cells:
+        entity1 = next(graph.objects(cell, align("entity1")), None)
+        entity2 = next(graph.objects(cell, align("entity2")), None)
+        relation = next(graph.objects(cell, align("relation")), None)
+        if entity1 is None or entity2 is None:
+            continue
+        relation_text = "" if relation is None else str(relation).strip()
+        if relation_text != _FLAGGED_RELATION:   # any asserted relation is an existence claim
+            pairs.add((str(entity1), str(entity2)))
+    return pairs
+
+
 def _load_reference_rdf(path: str | Path) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
-    """(R, U) from a reference RDF: R = all equivalence-or-`?` cells, U = the `?` cells"""
+    """(R, U) from a reference RDF: R = equivalence/subsumption/`?` cells, U = the `?` cells only.
+    Option-Two references keep coherence-weakened correspondences as one-directional subsumptions
+    (`<`/`>`/`<=`/`>=`); those count as reference POSITIVES (in R, never U) because the global
+    task scores existence only — see _SUBSUMPTION_RELATIONS."""
     from rdflib import Graph, URIRef    # type: ignore
     from rdflib.namespace import RDF    # type: ignore
 
@@ -81,7 +122,11 @@ def _load_reference_rdf(path: str | Path) -> tuple[set[tuple[str, str]], set[tup
         if relation_text == _FLAGGED_RELATION:
             reference.add(pair)   # a `?` cell is still a reference mapping for the standard metric
             flagged.add(pair)
-        elif relation_text == "" or relation_text in _EQUIVALENCE_RELATIONS:
+        elif (relation_text == "" or relation_text in _EQUIVALENCE_RELATIONS
+              or relation_text in _SUBSUMPTION_RELATIONS):
+            # `=`/absent OR an Option-Two subsumption (`<`/`>`/`<=`/`>=`): a reference positive in
+            # R+ (= R - U). The subsumption is NOT flagged — the equivalence task credits the mere
+            # existence of the correspondence, so a predicted `=` here still counts as a true positive.
             reference.add(pair)
     return reference, flagged
 
@@ -89,9 +134,10 @@ def _load_reference_rdf(path: str | Path) -> tuple[set[tuple[str, str]], set[tup
 def load_global_reference(path: str | Path) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
     """
     the complete reference + its `?`-flagged (incoherence-causing) subset -> `(R, U)`.
-    R is every equivalence-or-`?` cell (the standard metric counts `?` as a positive);
-    U is the `?` subset (ignored by the coherence-aware metric). Inline OAEI-canonical
-    `?` is auto-detected in an RDF reference; a TSV reference cannot carry `?` so
+    R is every equivalence-, subsumption-, or `?`-cell (the standard metric counts `?` as a
+    positive); U is the `?` subset only (ignored by the coherence-aware metric). An Option-Two
+    reference's `<`/`>`/`<=`/`>=` cells are positives in R+ = R - U, not flagged. Inline
+    OAEI-canonical `?` is auto-detected in an RDF reference; a TSV reference cannot carry `?` so
     `U = ∅` (coherent == standard).
     """
     if Path(path).suffix.lower() in _RDF_SUFFIXES:
