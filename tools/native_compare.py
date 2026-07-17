@@ -3,8 +3,8 @@
 
 This is a Java-free manual release gate. The public ontology/alignment files stay
 outside Git; their pinned hashes prevent an accidental comparison with different
-data. Until pyHermiT, pyELK, and core wire expose their frozen facades, the command
-fails at the explicit adapter capability boundary and produces no claimed result.
+data. It consumes only the released pyowl-core wire and pyHermiT/pyELK public
+facades, and fails at the explicit capability boundary if any is incompatible.
 """
 
 from __future__ import annotations

@@ -1,134 +1,153 @@
-# O3 native reasoner foundation evidence
+# O3 native reasoner integration evidence
 
-## Implemented boundary
+## Completed boundary
 
-This commit implements the dependency-independent O3 integration boundary without
-claiming that the sibling reasoners are already complete:
+O3 now runs against the concrete public sibling contracts rather than protocol
+doubles alone. The verified local revisions are:
 
-- `HermiTReasoner` targets the frozen pyHermiT public `Reasoner`,
-  `ReasonerConfig(timeout=...)`, `is_consistent()`,
-  `unsatisfiable_classes()`, `InconsistentOntologyError`, and
-  `ReasonerTimeoutError` contracts. It retains the exact composite by identity,
-  converts both pyHermiT inconsistency forms to classical explosion, and maps only
-  the public cooperative timeout exception to the OAEI fallback signal.
-- `ELKReasoner` targets the frozen pyELK `Reasoner`, `ReasonerConfig`,
-  `ReasoningResult`, and `Taxonomy.bottom` contracts. Unbounded calls may retain
-  in-process identity. Every bounded call encodes the composite with the planned
-  core wire API and sends only bytes plus three fingerprints to a spawn worker.
-  The child verifies the decoded fingerprints, records zero OWL parser calls, and
-  returns a bounded JSON result. Timeout terminates the process; malformed output,
-  crashes, unverified wire, or any nonzero parse count are errors.
-- The native dispatcher is now the default shared-view backend. ROBOT/DeepOnto
-  remain explicitly selected, quarantined differential code until O4; no native
-  failure silently selects them.
-- HermiT timeout fallback passes the exact same composite object to ELK. A built-in
-  `TimeoutError`, resource/backend/profile failure, worker failure, or any other
-  exception does not trigger fallback. The recorded elapsed time covers both the
-  timed-out HermiT attempt and ELK fallback.
-- `UnsatResult` carries additive native provenance, inconsistency, and fallback
-  fields. Official shared reports add a deterministic
-  `coherence-provenance/1` block covering package/methodology versions, safe
-  execution options, core API/model/wire versions, composite/source/target
-  fingerprints and roles, hashed document/import manifests, loader diagnostics,
-  bridge normalization counts/fingerprint, requested/actual reasoner and backend,
-  profile reasons, transport mode, timeout/fallback/lower-bound/inconsistency, and
-  denominator/numerator counts and sorted-line digests. Paths, credentials,
-  object IDs, and timestamps are excluded.
+- pyowl-core `86a73d116445e101ae196005ab50d802b451281f`;
+- pyHermiT `de061742118180594badf040206edf09822152ce`; and
+- pyELK `c076c7e5a2784c46e737a32446c22d82fdee3d4d`.
 
-The historical metric meaning and keys are unchanged. Inconsistent views produce
-the complete named-class denominator as the numerator, so global incoherence is
-`1.0`; ELK results remain labeled lower bounds.
+`HermiTReasoner` retains the exact `OntologyComposite`, constructs the public
+`pyhermit.Reasoner` with a cooperative timeout, establishes consistency before
+querying unsatisfiable classes, converts both inconsistent-ontology result forms
+to classical explosion, and disposes the session. Only the public
+`ReasonerTimeoutError` becomes the OAEI HermiT-timeout fallback signal.
 
-## Differential harnesses
+`ELKReasoner` retains identity for unbounded calls. Every bounded call encodes the
+same composite as PYOCORE wire, sends bytes and authenticated semantic
+fingerprints to a spawn worker, verifies all three fingerprints after decode, and
+requires a zero-OWL-parse result. The worker is terminated on timeout and cannot
+receive an ontology path or pickle. The emitted wire header version, rather than
+the core decoder's maximum supported minor, is recorded in provenance.
 
-Two Java-free manual gates are staged:
+The adapter now resolves the real pyELK distribution name
+`pyelk-reasoner`. This was a concrete integration blocker hidden by the earlier
+protocol doubles, because the import package is `pyelk`. Version checking remains
+on the compatible `>=0.1,<0.2` line.
 
-- `tools/native_fixture_compare.py` runs both native adapters over all five pinned
-  clean, equivalence, subsumption-direction, and already-incoherent fixtures and
-  requires exact reasoner identity, denominator, numerator count, and sorted IRI
-  digest agreement.
-- `tools/native_compare.py` verifies the external public NCIT-DOID ontology and
-  1,406-alignment hashes before requiring exact agreement with the frozen 24,227
-  named-class / 2,227 unsatisfiable-class real-data evidence.
+Fallback retains the same composite identity and now preserves a structured
+record of the timed-out HermiT package, backend, transport, and elapsed time in
+`coherence-provenance/1.prior_attempts`. Other timeout classes, backend failures,
+profile failures, resource failures, and worker failures still propagate without
+fallback.
 
-Ordinary tests validate every comparator branch against the immutable baselines,
-but do not relabel those protocol tests as native semantic runs.
+No O3 runtime path imports or invokes Java, ROBOT, DeepOnto, JPype, OWLAPI,
+Exact-OM, or the projector. The typed/equivalence metric modules remain outside
+the reasoner dependency graph.
 
-## Current dependency block and deliberately deferred evidence
+## Semantic acceptance
 
-The real semantic comparison cannot yet run:
+The concrete pyHermiT and pyELK facades both match every frozen ROBOT 1.9.10
+small fixture exactly:
 
-- pyHermiT `7471bf9` exposes configuration/contracts/normalization/role work but
-  does not yet export the planned WP14/WP16 `Reasoner` classification facade;
-- pyELK `e37ce19` exposes shared input/index/raw-result contracts but explicitly
-  defers its public `Reasoner` to WP10; and
-- pyowl-core `ad3b0dc` has composition/indexes but not the planned WP06
-  `encode_snapshot`/`decode_snapshot` wire API.
+| Fixture | Denominator | HermiT unsatisfiable | ELK unsatisfiable |
+|---|---:|---:|---:|
+| already incoherent | 5 | 1 | 1 |
+| equivalence clash | 4 | 2 | 2 |
+| equivalence clean | 4 | 0 | 0 |
+| forward subsumption clash | 4 | 1 | 1 |
+| reverse subsumption clash | 4 | 1 | 1 |
 
-The adapters issue explicit missing-package, missing-export, incompatible-version,
-and missing-wire errors at those boundaries. Therefore this work does **not** mark
-O3 semantic acceptance complete, does not claim fixture or NCIT-DOID native
-agreement, and does not report reasoner compile/classification performance. Those
-gates must be rerun after the sibling public facades and core wire land. No API was
-invented to bypass them; no GPU, OpenRouter, Java runtime fallback, or private OWL
-model was used.
+The gate compares the sorted IRI digest as well as counts and reasoner identity.
+It passes on CPython 3.10 and 3.12 for:
 
-## Verified gates
+- pyHermiT pure Python, in-process identity;
+- pyELK pure Python, in-process identity;
+- pyELK pure Python, bounded verified-wire worker; and
+- a locally built pyELK 0.1 Rust artifact, bounded verified-wire worker.
 
-The deterministic public-protocol tests cover:
+Concrete inconsistent composites containing a named class plus an individual
+asserted to `owl:Nothing` produce the full two-class denominator as the numerator,
+`global_coherence == 1.0`, and `inconsistent: true` from both adapters.
+Concrete pyHermiT also proves its public cooperative timeout maps to the OAEI
+fallback signal with attempt provenance. Protocol tests separately prove that
+the same composite reaches ELK, while built-in `TimeoutError` and ordinary
+failures do not fall back.
 
-- exact ontology identity and timeout configuration at pyHermiT construction;
-- sorted unsatisfiable extraction and `owl:Nothing` exclusion;
-- both inconsistent-ontology paths for pyHermiT and pyELK;
-- HermiT-timeout-only fallback, same-composite identity, and failure propagation;
-- bounded worker success, crash/EOF, malformed capability, termination, verified
-  wire, and zero-OWL-parse enforcement;
-- stable bridge/provenance counts and digests with no local identity/path leakage;
-- every small pinned fixture/backend comparator case and the public NCIT-DOID
-  comparator contract; and
-- concrete core composite role/fingerprint/document provenance on Python 3.10 and
-  3.12.
+## Verification matrix
 
-The full Java-free suite passes 167 tests with 11 expected optional skips on
-Python 3.10 and 163 tests with 12 expected optional skips on Python 3.12 (that
-environment does not discover the sibling core unless explicitly placed on
-`PYTHONPATH`). With the sibling core explicit, all five O1-O3 concrete
-identity/provenance checks pass on both versions. The unchanged
-`metric-contract/1`, Ruff, strict mypy for all O1-O3 shared modules, compileall,
-diff checks, and the native-source Java/pickle/subprocess scan also pass.
+With all four source trees on `PYTHONPATH` and both reasoners forced to their
+compiler-free Python backends:
 
-## Foundation performance observations
+| Gate | CPython 3.10.11 | CPython 3.12.3 |
+|---|---:|---:|
+| full Java-free unittest suite | 176 passed, 11 optional skips | 176 passed, 11 optional skips |
+| HermiT five-fixture exact comparator | pass | pass |
+| ELK in-process five-fixture comparator | pass | pass |
+| ELK bounded-wire five-fixture comparator | pass | pass |
+| ELK Rust-artifact bounded comparator | pass | pass |
+| `metric-contract/1` | pass | pass |
+| compileall (`src`, `tools`, `tests`, `benchmarks`) | pass | pass |
 
-`benchmarks/bench_o3_foundation.py` separates bridge normalization, zero-copy
-composition, signature indexing, and provenance. With 5,000 equivalence mappings
-(10,000 named classes) on the local runner:
+Ruff passes the complete coherence/O3 test, tool, and benchmark surface. Strict
+mypy passes `bridge.py`, `native_reasoners.py`, `provenance.py`, `report.py`, the
+concrete integration tests, and the native benchmark. Static import/call scans of
+the new native adapter, worker, bridge, provenance, and benchmark paths find no
+Java/ROBOT/DeepOnto/JPype/OWLAPI, pickle, subprocess, projector, or Exact coupling.
 
-| Python | normalize | compose | signature | cold provenance | warm provenance | peak process RSS |
+## Performance evidence
+
+`benchmarks/bench_o3_native.py` now separates source load, target load, bridge
+normalization, zero-copy composition, signature indexing, core-wire encoding,
+reasoner compilation, consistency, classification, and reporting. It records
+stage wall time, peak-RSS increments, wire bytes, backend metadata, semantic
+counts, and provenance size.
+
+On the local runner, a generated EL fixture with 400 named classes, 100 bridge
+equivalences, and 200 expected unsatisfiable classes produced:
+
+| Backend | Python | compile | consistency | classification | full reasoning | peak process RSS |
 |---|---:|---:|---:|---:|---:|---:|
-| 3.12.3 | 0.007 s | 1.701 s | 0.983 s | 2.144 s | 0.012 s | 41.5 MB |
-| 3.10.11 | 0.010 s | 1.976 s | 1.136 s | 2.565 s | 0.012 s | 38.2 MB |
+| pyELK Python | 3.10 | 0.687 s | 0.003 s | 2.022 s | 2.753 s | 38.3 MB |
+| pyELK Python | 3.12 | 0.585 s | 0.003 s | 1.224 s | 1.848 s | 42.0 MB |
 
-Both runs retained source/target identity, contained exactly 5,000 bridge delta
-entries, and emitted a roughly 3.7 KB provenance record. Cold provenance includes
-the required first composite structural/logical/signature fingerprint calculation;
-the cached repeat is the relevant reporting overhead after reasoner compilation.
+The Python 3.12 run additionally measured source/target load at 0.195/0.054 s,
+composition at 0.062 s, signature indexing at 0.108 s, a 204,988-byte wire image
+at 0.453 s, and provenance reporting at 0.0014 s. A locally built pyELK 0.1 Rust
+artifact also returned the exact 200-class numerator; on this small workload its
+worker and scheduling overhead made it slower than Python, so this result is not
+presented as a native speedup claim.
 
-A five-run test-protocol spawn/JSON worker probe had median launch/round-trip
-overhead of 0.247 s on Python 3.12 and 0.428 s on Python 3.10. This is process-boundary
-evidence only: core wire bytes and native pyELK classification are still deferred.
+The same benchmark exposes a current upstream scale risk rather than hiding it:
+pure pyHermiT required 5.59 s on Python 3.10 and 4.22 s on Python 3.12 to reason
+over only 10 named classes and two bridge equivalences. O3 integration adds no
+per-axiom conversion or reparsing, but it cannot make the sibling tableau/classifier
+faster. Large-DL performance therefore remains a release gate for pyHermiT/native
+work and O5, not accepted performance evidence for this evaluator.
+
+## External real-data gate
+
+`tools/native_compare.py` is ready for the pinned public NCIT-DOID source, target,
+and 1,406-row alignment. It verifies all three input hashes before comparing the
+24,227-class denominator and exact 2,227-class numerator digest. Those external
+files are not present in this workspace, so this commit does not fabricate an
+NCIT-DOID rerun or claim the licensed SNOMED-scale gate. The immutable comparator
+contract remains covered by ordinary tests. Supplying the pinned files is the only
+remaining input requirement for that manual O3/O5 evidence run.
 
 ## Reproduction
 
 ```text
-PYTHONPATH=src python3.10 -m unittest discover -s tests
-PYTHONPATH=src python3.12 -m unittest discover -s tests
-PYTHONPATH=src:../pyOWLCore/src python -m unittest \
-  tests.test_coherence.TestConcreteCoreIdentity \
-  tests.test_native_reasoners.TestConcreteCoreProvenance -v
+PYTHONPATH=src:../pyOWLCore/src:../pyHermiT/src:../pyELK/src \
+  PYHERMIT_BACKEND=python PYELK_PURE_PYTHON=1 \
+  python3.10 -m unittest discover -s tests
+PYTHONPATH=src:../pyOWLCore/src:../pyHermiT/src:../pyELK/src \
+  PYHERMIT_BACKEND=python PYELK_PURE_PYTHON=1 \
+  python3.12 -m unittest discover -s tests
+
+PYTHONPATH=src:../pyOWLCore/src:../pyHermiT/src:../pyELK/src \
+  PYHERMIT_BACKEND=python python tools/native_fixture_compare.py \
+  --reasoner hermit --timeout none
+PYTHONPATH=src:../pyOWLCore/src:../pyHermiT/src:../pyELK/src \
+  PYELK_PURE_PYTHON=1 python tools/native_fixture_compare.py \
+  --reasoner elk --timeout 60
+
 PYTHONPATH=src python tools/metric_contract.py
-PYTHONPATH=src:../pyOWLCore/src python benchmarks/bench_o3_foundation.py \
-  --bridge-count 5000
+python -m compileall -q src tools tests benchmarks
 ruff check src/oaei_bioml_eval/coherence tests/test_coherence.py \
-  tests/test_native_reasoners.py tools/native_compare.py \
-  tools/native_fixture_compare.py tools/robot_oracle.py
+  tests/test_native_reasoners.py tests/test_native_reasoner_integration.py \
+  tools/native_compare.py tools/native_fixture_compare.py tools/robot_oracle.py \
+  benchmarks/bench_o3_foundation.py benchmarks/bench_o3_native.py
 ```

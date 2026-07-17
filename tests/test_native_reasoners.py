@@ -25,6 +25,7 @@ from oaei_bioml_eval.coherence.native_reasoners import (
     NativeReasonerCompatibilityError,
     NativeReasonerUnavailableError,
     NativeWorkerError,
+    _encode_core_wire,
     _run_elk_worker,
 )
 from oaei_bioml_eval.coherence.provenance import (
@@ -256,6 +257,22 @@ class TestCapabilityBoundary(unittest.TestCase):
                     object(), which="hermit", timeout_s=1.0
                 )
 
+    def test_pyelk_uses_the_distribution_name_not_the_import_name(self):
+        module = _pyelk_module()
+        del module.__version__
+        with mock.patch(
+            "oaei_bioml_eval.coherence.native_reasoners.importlib.metadata.version",
+            return_value="0.1.0.dev0",
+        ) as version, mock.patch(
+            "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+            return_value=module,
+        ):
+            result = ELKReasoner().unsatisfiable_classes_view(
+                object(), which="elk", timeout_s=None
+            )
+        version.assert_called_once_with("pyelk-reasoner")
+        self.assertEqual(result.provenance["package_version"], "0.1.0.dev0")
+
 
 class TestHermiTAdapter(unittest.TestCase):
     def setUp(self):
@@ -456,6 +473,36 @@ class TestWireWorker(unittest.TestCase):
                 self.envelope, timeout_s=5.0, entrypoint=_silent_worker
             )
 
+    def test_envelope_records_the_emitted_wire_minor_not_the_capability_max(self):
+        core = types.ModuleType("pyowl_core")
+        core.__version__ = "0.1.0.dev0"
+        core.WIRE_FORMAT_VERSION = (1, 1)
+
+        def encode_snapshot(ontology):
+            del ontology
+            return b"PYOCORE\0\x01\x00\x00\x00"
+
+        def decode_snapshot(payload):
+            return payload
+
+        core.encode_snapshot = encode_snapshot
+        core.decode_snapshot = decode_snapshot
+
+        class Fingerprint:
+            hex = "a" * 64
+
+        ontology = types.SimpleNamespace(
+            structural_fingerprint=Fingerprint(),
+            logical_fingerprint=Fingerprint(),
+            signature_fingerprint=Fingerprint(),
+        )
+        with mock.patch(
+            "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+            return_value=core,
+        ):
+            envelope = _encode_core_wire(ontology)
+        self.assertEqual(envelope.wire_version, (1, 0))
+
 
 class _RecordingAdapter(CoherenceReasoner):
     accepts_ontology_views = True
@@ -504,6 +551,26 @@ class TestGateAndProvenance(unittest.TestCase):
         provenance = report["provenance"]
         self.assertEqual(provenance["reasoner"]["fallback_reason"], "hermit-timeout")
         self.assertAlmostEqual(provenance["reasoner"]["elapsed_seconds"], 0.51)
+
+    def test_timeout_attempt_metadata_reaches_final_provenance(self):
+        hermit = _RecordingAdapter(
+            error=HermiTTimeoutError(
+                "timeout",
+                elapsed_seconds=0.5,
+                attempt={
+                    "status": "timeout",
+                    "package": "pyHermiT",
+                    "package_version": "0.1.0.dev0",
+                    "backend": {"name": "python"},
+                },
+            )
+        )
+        elk = _RecordingAdapter(result=UnsatResult((A,), "elk", 0.01))
+        report = self._score(hermit, elk)
+        attempt = report["provenance"]["reasoner"]["prior_attempts"][0]
+        self.assertEqual(attempt["status"], "timeout")
+        self.assertEqual(attempt["package"], "pyHermiT")
+        self.assertEqual(attempt["backend"]["name"], "python")
 
     def test_other_timeout_class_and_other_errors_do_not_fallback(self):
         for error in (TimeoutError("not pyHermiT"), RuntimeError("failure")):

@@ -128,10 +128,14 @@ def _classify_view_with_gate(
             fallback = reasoner.unsatisfiable_classes_view(
                 ontology, which="elk", timeout_s=timeout_s
             )
+            provenance = dict(fallback.provenance)
+            if error.attempt:
+                provenance["attempts"] = (dict(error.attempt),)
             return replace(
                 fallback,
                 elapsed_seconds=error.elapsed_seconds + fallback.elapsed_seconds,
                 fallback_reason="hermit-timeout",
+                provenance=provenance,
             )
         raise
 

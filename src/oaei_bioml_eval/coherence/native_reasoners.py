@@ -1,9 +1,10 @@
 """Native pyHermiT/pyELK adapters over one retained shared ontology view.
 
 The sibling reasoner facades are imported only when classification is requested.
-This keeps the dependency-free metric surface importable and, while those facades
-are still under construction, fails explicitly instead of substituting a private
-reasoner or a Java implementation.
+This keeps the dependency-free metric surface importable while using only the
+released public facades of the sibling reasoner distributions.  An absent or
+incompatible facade fails explicitly instead of substituting a private reasoner
+or a Java implementation.
 """
 
 from __future__ import annotations
@@ -60,8 +61,15 @@ class NativeWorkerError(NativeReasonerError):
 class HermiTTimeoutError(TimeoutError):
     """Only the pyHermiT cooperative timeout maps to the ELK fallback gate."""
 
-    def __init__(self, message: str, *, elapsed_seconds: float = 0.0) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        elapsed_seconds: float = 0.0,
+        attempt: Mapping[str, JsonValue] | None = None,
+    ) -> None:
         self.elapsed_seconds = elapsed_seconds
+        self.attempt = dict(attempt or {})
         super().__init__(message)
 
 
@@ -128,6 +136,7 @@ class HermiTReasoner(CoherenceReasoner):
         api = _load_pyhermit_api()
         started = time.perf_counter()
         session: Any | None = None
+        backend: dict[str, JsonValue] = {}
         try:
             config = api.config_type(timeout=timeout_s)
             session = api.reasoner_type(ontology, config=config)
@@ -152,9 +161,18 @@ class HermiTReasoner(CoherenceReasoner):
                 unsatisfiable = named_class_iris(cast(OntologyView, ontology))
                 inconsistent = True
         except api.timeout_error as error:
+            elapsed = time.perf_counter() - started
             raise HermiTTimeoutError(
                 f"pyHermiT classification exceeded {timeout_s}s",
-                elapsed_seconds=time.perf_counter() - started,
+                elapsed_seconds=elapsed,
+                attempt={
+                    "status": "timeout",
+                    "package": "pyHermiT",
+                    "package_version": api.version,
+                    "backend": backend,
+                    "transport": {"mode": "in-process-identity"},
+                    "elapsed_seconds": elapsed,
+                },
             ) from error
         finally:
             if session is not None:
@@ -222,6 +240,7 @@ class ELKReasoner(CoherenceReasoner):
                 "wire_bytes": len(envelope.payload),
                 "wire_sha256": hashlib.sha256(envelope.payload).hexdigest(),
                 "wire_version": list(envelope.wire_version),
+                "wire_core_version": envelope.core_version,
             }
         inconsistent = _require_bool(raw.get("inconsistent"), "pyELK inconsistent result")
         unsatisfiable = (
@@ -309,7 +328,7 @@ def _load_pyhermit_api() -> _HermiTAPI:
         )
     return _HermiTAPI(
         module=module,
-        version=_reasoner_version(module, "pyhermit"),
+        version=_reasoner_version(module, "pyHermiT"),
         reasoner_type=module.Reasoner,
         config_type=module.ReasonerConfig,
         inconsistent_error=inconsistent_error,
@@ -322,7 +341,7 @@ def _load_pyelk_api() -> _ELKAPI:
     _require_exports(module, "pyELK", ("Reasoner", "ReasonerConfig"))
     return _ELKAPI(
         module=module,
-        version=_reasoner_version(module, "pyelk"),
+        version=_reasoner_version(module, "pyelk-reasoner"),
         reasoner_type=module.Reasoner,
         config_type=module.ReasonerConfig,
     )
@@ -417,17 +436,31 @@ def _backend_metadata(session: Any, package_version: str) -> dict[str, JsonValue
         "ir_schema_version",
         "ir_major",
         "ir_minor",
+        "core_package_version",
+        "core_model_schema_version",
+        "core_adapter_protocol_version",
         "accelerated",
+        "native_available",
         "effective_workers",
         "requested_workers",
         "fallback_reason",
     ):
         value = getattr(backend, name, None)
-        if isinstance(value, (str, int, float, bool)) or value is None:
+        if isinstance(value, (str, int, float, bool)):
             metadata[name] = value
+        elif name == "fallback_reason" and value is None:
+            metadata[name] = None
     features = getattr(backend, "complete_features", None)
     if features is not None:
         metadata["complete_features"] = sorted(str(item) for item in features)
+    for name in ("core_api_version", "core_wire_format_version"):
+        value = getattr(backend, name, None)
+        if (
+            isinstance(value, tuple)
+            and len(value) == 2
+            and all(isinstance(item, int) and not isinstance(item, bool) for item in value)
+        ):
+            metadata[name] = list(value)
     return metadata
 
 
@@ -548,11 +581,31 @@ def _encode_core_wire(ontology: object) -> CoreWireEnvelope:
         raise NativeReasonerCompatibilityError(
             "pyowl-core WIRE_FORMAT_VERSION must be an integer pair"
         )
+    capability_version = cast(tuple[int, int], version)
+    wire_version = _wire_header_version(payload)
+    if (
+        wire_version[0] != capability_version[0]
+        or wire_version[1] > capability_version[1]
+    ):
+        raise NativeReasonerCompatibilityError(
+            "pyowl-core encoded a wire version outside its advertised capability"
+        )
     return CoreWireEnvelope(
         payload=payload,
         fingerprints=_view_fingerprints(ontology),
-        wire_version=version,
+        wire_version=wire_version,
         core_version=str(getattr(core, "__version__", "unknown")),
+    )
+
+
+def _wire_header_version(payload: bytes) -> tuple[int, int]:
+    if len(payload) < 12 or payload[:8] != b"PYOCORE\0":
+        raise NativeReasonerCompatibilityError(
+            "pyowl-core encode_snapshot returned an invalid PYOCORE header"
+        )
+    return (
+        int.from_bytes(payload[8:10], "little"),
+        int.from_bytes(payload[10:12], "little"),
     )
 
 

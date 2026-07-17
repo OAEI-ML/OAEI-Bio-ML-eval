@@ -54,7 +54,7 @@ def compare_case(
         )
 
 
-def capture(*, reasoner: str, timeout_s: float) -> dict[str, Any]:
+def capture(*, reasoner: str, timeout_s: float | None) -> dict[str, Any]:
     if os.environ.get("OAEI_COHERENCE_BACKEND") not in {None, "", "native"}:
         raise RuntimeError(
             "unset OAEI_COHERENCE_BACKEND: fixture comparison permits only native adapters"
@@ -94,13 +94,20 @@ def capture(*, reasoner: str, timeout_s: float) -> dict[str, Any]:
     return output
 
 
+def _timeout(value: str) -> float | None:
+    if value.lower() in {"none", "unbounded"}:
+        return None
+    parsed = float(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("timeout must be positive or 'none'")
+    return parsed
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reasoner", choices=("hermit", "elk"), required=True)
-    parser.add_argument("--timeout", type=float, default=600.0)
+    parser.add_argument("--timeout", type=_timeout, default=600.0)
     args = parser.parse_args(argv)
-    if args.timeout <= 0:
-        parser.error("--timeout must be positive")
     print(json.dumps(capture(reasoner=args.reasoner, timeout_s=args.timeout), indent=2, sort_keys=True))
     return 0
 

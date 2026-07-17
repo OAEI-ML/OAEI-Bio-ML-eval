@@ -79,6 +79,7 @@ def build_coherence_provenance(
             "backend": _json_mapping(reasoner_details.get("backend")),
             "profile": profile,
             "transport": transport_record,
+            "prior_attempts": _json_attempts(reasoner_details.get("attempts")),
         },
         "result": {
             "denominator_count": len(denominator_values),
@@ -308,6 +309,12 @@ def _json_mapping(value: object) -> dict[str, object]:
         str(key): _json_value(item)
         for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
     }
+
+
+def _json_attempts(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, (tuple, list)):
+        return []
+    return [_json_mapping(item) for item in value if isinstance(item, Mapping)]
 
 
 def _json_value(value: object) -> object:
