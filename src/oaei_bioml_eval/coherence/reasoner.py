@@ -1,14 +1,12 @@
-"""
-oaei_bioml_eval.coherence.reasoner: the swappable reasoner backend.
+"""Reasoner adapter seam plus quarantined pre-native differential backends.
 
-The official coherence needs an OWL reasoner the light participant scorer cannot
-carry, so it sits behind a tiny CoherenceReasoner seam — merge two OWLs + a bridge
-of EquivalentClasses axioms, count the merged named-class signature, list the
-unsatisfiable classes. `load_reasoner` picks the binding:
+The official O2 path composes exact shared views in ``coherence.bridge`` and
+passes one ``OntologyComposite`` to ``unsatisfiable_classes_view``. It never asks
+a reasoner to merge or serialize ontologies. The file-handle methods and Java
+classes below remain temporarily for O0 differential evidence and are deleted in
+O4 after native adapters land in O3. ``load_reasoner`` currently picks:
 
-  * 'robot'     (DEFAULT) the OBO-standard CLI as a subprocess. NO JVM/torch in
-                eval's deps; ROBOT is an external tool located on PATH / $ROBOT_JAR.
-                Parsing its OWL output uses rdflib (the [reasoner] extra).
+  * 'robot'     the repository-only ROBOT differential classifier;
   * 'deeponto'  an OPTIONAL in-process fast-path reusing a warm JVM via direct
                 OWLAPI; behind the [deeponto] extra (lazy import). Older HermiT/ELK
                 than ROBOT -> exploratory, never mixed with ROBOT numbers on a board.
@@ -19,8 +17,8 @@ All bindings drive the SAME HermiT (DL, exact) / ELK (EL, a `>=` lower bound)
 underneath, so they are interchangeable up to reasoner VERSION — counts are
 version-dependent, so pin one for released numbers. The HermiT-timeout -> ELK 
 gate lives ABOVE this seam (report.py), so the policy is backend-independent. 
-The merged ontology is built ONCE and reasoned over by both HermiT and ELK, 
-so the denominator + axioms are identical (`=`/`>=` comparable).
+The shared composite is built once and reused for its signature and every native
+reasoner pass, so the denominator and axioms are identical.
 """
 from __future__ import annotations
 
@@ -30,11 +28,13 @@ import shutil
 import signal
 import subprocess
 import time
-from abc import ABC, abstractmethod
+from abc import ABC
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from .bridge import normalize_correspondences
 
 OWL_THING = "http://www.w3.org/2002/07/owl#Thing"
 OWL_NOTHING = "http://www.w3.org/2002/07/owl#Nothing"
@@ -52,10 +52,8 @@ class UnsatResult:
 @dataclass
 class MergedOntology:
     """
-    a backend-private handle to the merged ontology, reused for the signature + BOTH
-    reasoner passes (built ONCE -> the denominator + axioms are identical across HermiT
-    and ELK). `handle` is a Path (ROBOT's merged.owl) or an (manager, ontology) pair
-    (DeepOnto); `workdir` is ROBOT's scratch, freed by dispose().
+    Legacy differential-oracle handle. Official shared-view scoring never creates
+    this wrapper; it passes the exact core composite to a native adapter.
     """
     handle: Any
     workdir: Path | None = None
@@ -63,43 +61,42 @@ class MergedOntology:
 
 class CoherenceReasoner(ABC):
     name: str = "base"
-    # O1 transition marker.  The legacy ROBOT/DeepOnto differential oracles keep
-    # their file-only ``merge`` implementation; native adapters opt into the
-    # identity-preserving view handoff through ``merge_views``.  O2 removes both
-    # merge methods in favour of the shared core composite.
+    # Native adapters opt into the O2 shared composite handoff. Legacy Java
+    # differential oracles keep the file-only methods until O4 deletes them.
     accepts_ontology_views: bool = False
 
-    @abstractmethod
     def merge(
         self, src_owl: Path, tgt_owl: Path, pairs: Iterable[object]
     ) -> MergedOntology:
-        """both OWLs + a bridge of one axiom per correspondence (named, IRIs sorted): `=` ->
-        EquivalentClasses(src, tgt), `<=`/`>=` -> SubClassOf. Items are `(src, tgt)` pairs (-> `=`)
-        or `(src, tgt, relation)` triples."""
-
-    def merge_views(
-        self, source: object, target: object, pairs: Iterable[object]
-    ) -> MergedOntology:
-        """Prepare exact shared ontology views for classification.
-
-        This non-abstract O1 seam lets native/stub adapters prove identity handoff
-        before O2 introduces ``pyowl_core.compose_views``.  Legacy Java oracles do
-        not implement it and therefore cannot accidentally consume or reparse a
-        shared view.
-        """
-        del source, target, pairs
+        """Legacy file-only merge retained solely for differential capture."""
+        del src_owl, tgt_owl, pairs
         raise TypeError(
-            f"{type(self).__name__} is a legacy file-only differential oracle; "
-            "snapshot-first coherence requires a shared-view reasoner adapter"
+            f"{type(self).__name__} does not implement the legacy file oracle"
         )
 
-    @abstractmethod
     def named_classes(self, merged: MergedOntology) -> tuple[str, ...]:
-        """merged class signature (Imports.EXCLUDED) minus owl:Thing/Nothing/anonymous, sorted"""
+        """Legacy file-oracle denominator."""
+        del merged
+        raise TypeError(f"{type(self).__name__} does not implement the legacy file oracle")
 
-    @abstractmethod
     def unsatisfiable_classes(self, merged: MergedOntology, *, which: str, timeout_s: float | None) -> UnsatResult:
-        """classify with 'hermit'|'elk'; sorted unsat named classes minus owl:Nothing. raises TimeoutError on the wall-clock gate"""
+        """Legacy file-oracle classification."""
+        del merged, which, timeout_s
+        raise TypeError(f"{type(self).__name__} does not implement the legacy file oracle")
+
+    def unsatisfiable_classes_view(
+        self,
+        ontology: object,
+        *,
+        which: str,
+        timeout_s: float | None,
+    ) -> UnsatResult:
+        """Classify the exact core composite without materializing or reparsing it."""
+        del ontology, which, timeout_s
+        raise TypeError(
+            f"{type(self).__name__} is a legacy file-only differential oracle; "
+            "shared coherence requires a native view adapter"
+        )
 
     def dispose(self, merged: MergedOntology) -> None:
         """release the merged handle (ROBOT tempdir / DeepOnto ontology); default no-op"""
@@ -125,73 +122,6 @@ def load_reasoner(backend: str | None = None, *, robot_jar=None, java=None,
 # bridge + signature helpers (shared)
 # -----------------------------------
 ##
-
-# bridge correspondences may carry an Option-Two relation. `=` -> EquivalentClasses; the
-# one-directional weakenings `<=`/`>=` (LogMap bare `<`/`>` aliased) -> SubClassOf, mirroring
-# CoherenceCheckELK.java (`<` = SubClassOf(s,t), `>` = SubClassOf(t,s)). A 2-tuple defaults to `=`,
-# so every existing caller (matcher submissions, all `=`) is unchanged.
-_BRIDGE_RELATION_ALIASES = {"<": "<=", ">": ">="}
-_BRIDGE_RELATIONS = frozenset({"=", "<=", ">="})
-
-
-def normalize_correspondences(items: Iterable) -> list[tuple[str, str, str]]:
-    """
-    canonical sorted `(src, tgt, relation)` triples from a mix of 2-tuples (relation defaults to
-    `=`) and 3-tuples `(src, tgt, relation)`. `<`/`>` are aliased to `<=`/`>=`; self-pairs dropped;
-    deduped + sorted for a canonical axiom set. Raises on an unsupported relation symbol.
-    """
-    out: set[tuple[str, str, str]] = set()
-    for item in items:
-        item = tuple(item)
-        src, tgt = str(item[0]), str(item[1])
-        relation = str(item[2]).strip() if len(item) >= 3 else "="
-        relation = _BRIDGE_RELATION_ALIASES.get(relation, relation)
-        if relation not in _BRIDGE_RELATIONS:
-            raise ValueError(f"bridge correspondence ({src}, {tgt}) has unsupported relation "
-                             f"{relation!r}; expected one of =, <=, >= (or bare < / >).")
-        if src != tgt:
-            out.add((src, tgt, relation))
-    return sorted(out)
-
-
-def write_bridge_ofn(path: Path, pairs: Iterable) -> int:
-    """
-    one bridge axiom per correspondence, in OWL functional syntax (.ofn — ROBOT reads it directly):
-    `=` -> EquivalentClasses(src, tgt); `<=` -> SubClassOf(src, tgt); `>=` -> SubClassOf(tgt, src)
-    (mirroring CoherenceCheckELK). Items are `(src, tgt)` pairs (default `=`) or `(src, tgt, rel)`
-    triples. NAMED classes only; IRIs sorted for a canonical axiom set; each class declared so a
-    stray IRI never reads as undeclared.
-    """
-    ordered = normalize_correspondences(pairs)
-    iris = sorted({iri for src, tgt, _ in ordered for iri in (src, tgt)})
-    lines = ["Ontology(<https://w3id.org/oaei-bioml/coherence/bridge>"]
-    lines += [f"  Declaration(Class(<{iri}>))" for iri in iris]
-    for src, tgt, relation in ordered:
-        if relation == "=":
-            lines.append(f"  EquivalentClasses(<{src}> <{tgt}>)")
-        elif relation == "<=":
-            lines.append(f"  SubClassOf(<{src}> <{tgt}>)")
-        else:   # ">="
-            lines.append(f"  SubClassOf(<{tgt}> <{src}>)")
-    lines.append(")")
-    Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return len(ordered)
-
-
-# chars illegal inside a functional-syntax `<...>` IRI (RFC 3987) — a hit means the
-# "IRI" is really several run together (a corrupted alignment, or a malformed OWL),
-# which makes ROBOT swallow the next line(s) into one element and abort the merge.
-_BAD_IRI_CHARS = frozenset(' \t\n\r\x0b\x0c<>"{}|^`\\')
-
-
-def invalid_alignment_iris(pairs: Iterable[tuple[str, str]]) -> list[str]:
-    """alignment IRIs with embedded whitespace/control or other IRI-illegal chars, sorted + deduped.
-    Inspects only the two IRI slots, so a relation-typed `(src, tgt, rel)` triple's `<=`/`>=` symbol
-    is never mistaken for a malformed IRI."""
-    bad = {iri for pair in pairs for iri in tuple(pair)[:2]
-           if any(ch in _BAD_IRI_CHARS or ord(ch) < 0x20 for ch in iri)}
-    return sorted(bad)
-
 
 # the denominator: named classes of the MERGED ontology, via `robot query` (a Jena SPARQL
 # over the loaded model) — NOT rdflib, whose recursive Turtle parser blows the recursion
@@ -246,24 +176,15 @@ def _parse_unsatisfiable(log: str) -> set[str]:
 
 _TERMINATE_GRACE_SECONDS = 10.0
 
-_MALFORMED_IRI_HINT = (
-    "\n\nHINT: an input contains an IRI with embedded whitespace (several IRIs run together). "
-    "The bridge is validated before merge, so this is almost certainly a malformed/truncated input "
-    "OWL — e.g. a SNOMED RF2->OWL conversion that did not finish cleanly (the toolkit emits OWL "
-    "functional syntax, where a dropped `>` makes ROBOT read on across lines). Validate the OWL with:\n"
-    "    robot convert --input <that.owl> --output /tmp/check.owl\n"
-    "and re-run the conversion (more heap/disk) if that fails."
-)
-
-
 class RobotReasoner(CoherenceReasoner):
     """
-    the default. `robot merge` (both OWLs + the bridge) then `robot reason --reasoner
-    hermit|elk`: ROBOT logs the EXACT unsatisfiable classes ("unsatisfiable: <IRI>") and
-    exits non-zero on incoherence; we parse that log (and cross-check its "There are N").
-    NOT `--dump-unsatisfiable`: that dump is an explanatory/justification module — it
-    carries the satisfiable context classes that explain the clash, so counting it would
-    over-count the numerator.
+    Quarantined ROBOT classifier used by the repository-only differential oracle.
+
+    The tool-owned oracle supplies the legacy serialized merge. ROBOT then logs the
+    exact unsatisfiable classes ("unsatisfiable: <IRI>") and exits non-zero on
+    incoherence; we parse that log and cross-check its "There are N" total. This is
+    intentionally not `--dump-unsatisfiable`: that explanatory module also carries
+    satisfiable context classes and would over-count the numerator.
     """
     name = "robot"
 
@@ -291,23 +212,6 @@ class RobotReasoner(CoherenceReasoner):
         if self._heap:  # the `robot` wrapper reads this
             env["ROBOT_JAVA_ARGS"] = f"-Xmx{self._heap}"
         return env
-
-    def merge(self, src_owl: Path, tgt_owl: Path, pairs: Iterable) -> MergedOntology:
-        import tempfile
-        workdir = Path(tempfile.mkdtemp(prefix="coh-robot-"))
-        bridge = workdir / "bridge.ofn"
-        write_bridge_ofn(bridge, pairs)
-        # Turtle, NOT RDF/XML: OWLAPI's RDF/XML renderer fails on SNOMED's digit-IRI annotation
-        # properties (the new model-component hierarchy) — and Turtle is what rdflib reads back for
-        # the denominator. all three of ttl/ofn/owx serialise cleanly; ttl is the one rdflib parses.
-        merged = workdir / "merged.ttl"
-        code, log = self._run([*self._base_cmd(), "merge",
-                               "--input", str(src_owl), "--input", str(tgt_owl), "--input", str(bridge),
-                               "--output", str(merged)], timeout_s=None, label="merge")
-        if code != 0:
-            hint = _MALFORMED_IRI_HINT if ("invalid characters" in log or "invalid-element-error" in log) else ""
-            raise RuntimeError(f"ROBOT merge failed (exit {code}):\n{log[-2000:]}{hint}")
-        return MergedOntology(merged, workdir)
 
     def named_classes(self, merged: MergedOntology) -> tuple[str, ...]:
         query = merged.workdir / "classes.rq"

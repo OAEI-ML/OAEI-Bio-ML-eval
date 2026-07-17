@@ -2,20 +2,20 @@
 oaei_bioml_eval.coherence.report: file -> coherence metric-dict entry points + the
 reasoner orchestrator (the HermiT-timeout -> ELK gate, backend-independent).
 
-`score_global_coherence_files` merges a global `=` alignment with both OWLs,
-classifies, and returns the unsatisfiable-class count + the degree of INCOHERENCE
-(0 = clean, higher = worse). `score_local_coherence_files` does the same over each 
-query's rank-1 committed `(src, top1)` mapping and returns the mean per-query 
-incoherence. `score_structural_proxy_files` is the dependency-free participant 
-proxy (a STUB until its rules are fixed — never the leaderboard value).
+`score_global_coherence_files` composes a global `=` alignment over both ontology
+views, classifies it, and returns the unsatisfiable-class count + the degree of
+INCOHERENCE (0 = clean, higher = worse). `score_local_coherence_files` does the
+same over each query's rank-1 committed `(src, top1)` mapping and returns the mean
+per-query incoherence. `score_structural_proxy_files` is the dependency-free
+participant proxy (a STUB until its rules are fixed — never the leaderboard value).
 
-The merged ontology is built ONCE and reasoned over by both HermiT and ELK so the
-denominator + axioms are identical; every unsatisfiable IRI is asserted to lie in
-the merged signature (numerator subset of denominator).
+One exact shared composite is built without materialization and reasoned over by
+both HermiT and ELK so the denominator + axioms are identical; every
+unsatisfiable IRI is asserted to lie in its signature (numerator subset of
+denominator).
 """
 from __future__ import annotations
 
-import importlib
 import os
 import sys
 from collections.abc import Iterable
@@ -36,71 +36,28 @@ else:
 
 from ..io import write_json
 from . import structural
+from .bridge import (
+    Correspondence,
+    SnapshotCompatibilityError,
+    coerce_ontology_pair_once,
+    compose_alignment_views,
+    invalid_alignment_iris,
+    named_class_iris,
+    normalize_correspondences,
+)
 from .loaders import load_committed_top1, load_global_pairs, load_relation_typed_correspondences
 from .metrics import global_coherence_ratio, local_coherence_aggregate
 from .reasoner import (
     CoherenceReasoner,
     MergedOntology,
     UnsatResult,
-    invalid_alignment_iris,
     load_reasoner,
 )
 
 ReasonerName = Literal["hermit", "elk"]
 MetricValue: TypeAlias = int | float | str | bool
 MetricReport: TypeAlias = dict[str, MetricValue]
-Correspondence: TypeAlias = tuple[str, str] | tuple[str, str, str]
 CorrespondenceT = TypeVar("CorrespondenceT", bound=tuple[str, ...])
-
-
-class SnapshotCompatibilityError(RuntimeError):
-    """The optional shared-OWL coherence stack is absent or too old."""
-
-
-def _coerce_ontology_pair_once(
-    source: OntologyInput,
-    target: OntologyInput,
-    *,
-    source_document_iri: IRI | str | None,
-    target_document_iri: IRI | str | None,
-    load_options: LoadOptions | None,
-    resolver: ImportResolver | None,
-    cancellation_token: CancellationToken | None,
-) -> tuple[object, object]:
-    """Call the core facade exactly once for each input and preserve its result.
-
-    Importing the core is delayed so typed/equivalence users retain the empty base
-    dependency surface during the migration.  Loader exceptions deliberately pass
-    through unchanged; only a missing/incompatible optional core is translated.
-    """
-    try:
-        core = importlib.import_module("pyowl_core")
-    except ModuleNotFoundError as error:
-        if error.name != "pyowl_core":
-            raise
-        raise SnapshotCompatibilityError(
-            "snapshot-first coherence requires pyowl-core; install the reasoner extra"
-        ) from error
-    coerce = getattr(core, "coerce_snapshot", None)
-    if not callable(coerce):
-        raise SnapshotCompatibilityError(
-            "installed pyowl-core does not expose coerce_snapshot; install a compatible release"
-        )
-    source_view = coerce(
-        source,
-        document_iri=source_document_iri,
-        options=load_options,
-        resolver=resolver,
-        cancellation_token=cancellation_token,
-    )
-    target_view = coerce(
-        target,
-        document_iri=target_document_iri,
-        options=load_options,
-        resolver=resolver,
-        cancellation_token=cancellation_token,
-    )
-    return source_view, target_view
 
 
 def _validated_pairs(
@@ -145,6 +102,27 @@ def _classify_with_gate(
         raise
 
 
+def _classify_view_with_gate(
+    reasoner: CoherenceReasoner,
+    ontology: OntologyView,
+    *,
+    prefer: ReasonerName,
+    timeout_s: float | None,
+) -> UnsatResult:
+    """Use the same exact composite for the preferred and timeout-fallback pass."""
+
+    try:
+        return reasoner.unsatisfiable_classes_view(
+            ontology, which=prefer, timeout_s=timeout_s
+        )
+    except TimeoutError:
+        if prefer == "hermit":
+            return reasoner.unsatisfiable_classes_view(
+                ontology, which="elk", timeout_s=timeout_s
+            )
+        raise
+
+
 def _coherence_over_pairs(
     reasoner: CoherenceReasoner,
     source: object,
@@ -155,14 +133,25 @@ def _coherence_over_pairs(
     timeout_s: float | None,
     shared_views: bool = False,
 ) -> tuple[tuple[str, ...], UnsatResult]:
-    """Merge once, classify once, and enforce numerator/denominator integrity.
+    """Compose/merge once, classify once, and enforce result integrity.
 
-    ``shared_views`` is the O1 identity-preserving seam.  The path branch is
-    retained only for the quarantined Java differential backends and disappears
-    after the native composite path is verified.
+    The shared branch owns the only official O2 bridge: a core delta over one
+    zero-copy composite. The path branch is retained only for quarantined Java
+    differential captures and disappears in O4.
     """
     if shared_views:
-        merged = reasoner.merge_views(source, target, pairs)
+        merged_view = compose_alignment_views(
+            cast(OntologyView, source),
+            cast(OntologyView, target),
+            cast(Iterable[Correspondence], pairs),
+        )
+        denominator = named_class_iris(merged_view)
+        result = _classify_view_with_gate(
+            reasoner,
+            merged_view,
+            prefer=prefer,
+            timeout_s=timeout_s,
+        )
     else:
         if not isinstance(source, (str, os.PathLike)) or not isinstance(
             target, (str, os.PathLike)
@@ -171,11 +160,13 @@ def _coherence_over_pairs(
                 "legacy differential backends accept ontology paths only"
             )
         merged = reasoner.merge(Path(source), Path(target), pairs)
-    try:
-        denominator = reasoner.named_classes(merged)
-        result = _classify_with_gate(reasoner, merged, prefer=prefer, timeout_s=timeout_s)
-    finally:
-        reasoner.dispose(merged)
+        try:
+            denominator = reasoner.named_classes(merged)
+            result = _classify_with_gate(
+                reasoner, merged, prefer=prefer, timeout_s=timeout_s
+            )
+        finally:
+            reasoner.dispose(merged)
     stray = set(result.unsatisfiable) - set(denominator)
     if stray:   # numerator must lie within the merged signature
         raise AssertionError(f"unsatisfiable IRIs absent from the merged signature: {sorted(stray)}")
@@ -192,20 +183,21 @@ def _require_shared_view_reasoner(reasoner: CoherenceReasoner) -> None:
 
 def _global_report(
     rsnr: CoherenceReasoner,
-    pairs: Iterable[object],
+    pairs: Iterable[Correspondence],
     source: object,
     target: object,
     *,
     reasoner: ReasonerName,
     timeout_s: float | None,
     shared_views: bool,
-    asserted_correspondences: int | None = None,
+    include_asserted_correspondences: bool = False,
 ) -> MetricReport:
+    normalized = normalize_correspondences(pairs)
     denominator, result = _coherence_over_pairs(
         rsnr,
         source,
         target,
-        pairs,
+        normalized,
         prefer=reasoner,
         timeout_s=timeout_s,
         shared_views=shared_views,
@@ -218,8 +210,8 @@ def _global_report(
         "reasoner_used": result.reasoner_used,
         "lower_bound": result.reasoner_used == "elk",
     }
-    if asserted_correspondences is not None:
-        metrics["asserted_correspondences"] = asserted_correspondences
+    if include_asserted_correspondences:
+        metrics["asserted_correspondences"] = len(normalized)
     return metrics
 
 
@@ -241,11 +233,12 @@ def _local_report(
             "reasoner_used": reasoner,
             "lower_bound": reasoner == "elk",
         }
+    normalized = normalize_correspondences(committed)
     _denominator, result = _coherence_over_pairs(
         rsnr,
         source,
         target,
-        sorted(set(committed)),
+        normalized,
         prefer=reasoner,
         timeout_s=timeout_s,
         shared_views=shared_views,
@@ -312,7 +305,7 @@ def score_reference_coherence(
         reasoner=reasoner,
         timeout_s=timeout_s,
         shared_views=True,
-        asserted_correspondences=len(typed),
+        include_asserted_correspondences=True,
     )
 
 
@@ -357,7 +350,7 @@ def _coerce_for_shared_backend(
 ) -> tuple[object, object] | None:
     if not rsnr.accepts_ontology_views:
         return None
-    return _coerce_ontology_pair_once(
+    return coerce_ontology_pair_once(
         source,
         target,
         source_document_iri=source_document_iri,
@@ -467,7 +460,7 @@ def score_reference_coherence_files(
         reasoner=reasoner,
         timeout_s=timeout_s,
         shared_views=shared,
-        asserted_correspondences=len(typed),
+        include_asserted_correspondences=True,
     )
     if output_path is not None:
         write_json(output_path, metrics)

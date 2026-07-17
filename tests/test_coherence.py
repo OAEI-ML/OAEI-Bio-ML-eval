@@ -13,17 +13,21 @@ import sys
 import tempfile
 import types
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
 from oaei_bioml_eval.coherence import metrics, structural
+from oaei_bioml_eval.coherence.bridge import (
+    compose_alignment_views,
+    normalize_correspondences,
+)
 from oaei_bioml_eval.coherence.reasoner import (
     CoherenceReasoner,
     MergedOntology,
     UnsatResult,
     _parse_unsatisfiable,
     load_reasoner,
-    write_bridge_ofn,
 )
 from oaei_bioml_eval.coherence.report import (
     score_global_coherence,
@@ -154,16 +158,28 @@ class TestReasonerFactory(unittest.TestCase):
 
 
 class TestBridgeWriter(unittest.TestCase):
-    def test_bridge_is_sorted_deduped_and_declares(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "bridge.ofn"
-            n = write_bridge_ofn(path, [(B, A), (A, A), (B, A)])   # self-pair dropped, dup collapsed
-            text = path.read_text()
-        self.assertEqual(n, 1)                                     # one EquivalentClasses axiom
-        self.assertIn(f"EquivalentClasses(<{B}> <{A}>)", text)
-        self.assertIn(f"Declaration(Class(<{A}>))", text)
-        self.assertNotIn(f"EquivalentClasses(<{A}> <{A}>)", text)  # no self-equivalence
+    def test_normalization_covers_all_frozen_aliases(self):
+        self.assertEqual(
+            normalize_correspondences(
+                [
+                    (A, B),
+                    (A, B, "equivalent"),
+                    (A, B, "equiv"),
+                    (B, C, "<"),
+                    (B, C, "<="),
+                    (C, D, ">"),
+                    (C, D, ">="),
+                    (A, A, "="),
+                ]
+            ),
+            ((A, B, "="), (B, C, "<="), (C, D, ">=")),
+        )
 
+    def test_unsupported_relation_and_shape_fail_before_composition(self):
+        with self.assertRaises(ValueError):
+            normalize_correspondences([(A, B, "?")])
+        with self.assertRaises(ValueError):
+            normalize_correspondences([(A,)])
 
 class TestStructuralStub(unittest.TestCase):
     def test_proxy_is_a_stub(self):
@@ -218,22 +234,43 @@ class _StubReasoner(CoherenceReasoner):
 
 
 class _SharedViewStub(_StubReasoner):
-    """O1 instrumentation: records exact view identities and handoff count."""
+    """O2 instrumentation: records the exact composite on every reasoner pass."""
 
     accepts_ontology_views = True
 
     def __init__(self, denominator, unsat_by_reasoner, *, timeout_on=()):
         super().__init__(denominator, unsat_by_reasoner, timeout_on=timeout_on)
-        self.source_view = None
-        self.target_view = None
-        self.view_handoffs = 0
+        self.view_calls = []
 
-    def merge_views(self, source, target, pairs):
-        self.source_view = source
-        self.target_view = target
-        self.view_handoffs += 1
-        self.merged_pairs = sorted(set(pairs))
-        return MergedOntology(self.merged_pairs)
+    def unsatisfiable_classes_view(self, ontology, *, which, timeout_s):
+        self.view_calls.append(ontology)
+        if which in self._timeout_on:
+            raise TimeoutError(f"stub timeout on {which}")
+        return UnsatResult(tuple(sorted(self._unsat.get(which, ()))), which, 0.0)
+
+
+class _FakeComposite:
+    def __init__(self, source, target, pairs):
+        self.source = source
+        self.target = target
+        self.pairs = tuple(pairs)
+
+
+def _fake_core(coerce):
+    module = types.ModuleType("pyowl_core")
+    for name in (
+        "Class",
+        "EntityKind",
+        "EquivalentClasses",
+        "IRI",
+        "OntologyComposite",
+        "OntologyDelta",
+        "SubClassOf",
+        "compose_views",
+    ):
+        setattr(module, name, object())
+    module.coerce_snapshot = coerce
+    return module
 
 
 def _write_sub(tmp: Path, pairs) -> Path:
@@ -250,17 +287,27 @@ def _write_ranked(tmp: Path, rows) -> Path:
 
 
 class TestSnapshotFirstAPI(unittest.TestCase):
+    @contextmanager
     def _patch(self, stub):
-        return mock.patch("oaei_bioml_eval.coherence.report.load_reasoner", return_value=stub)
+        with mock.patch(
+            "oaei_bioml_eval.coherence.report.load_reasoner", return_value=stub
+        ), mock.patch(
+            "oaei_bioml_eval.coherence.report.compose_alignment_views",
+            side_effect=_FakeComposite,
+        ), mock.patch(
+            "oaei_bioml_eval.coherence.report.named_class_iris",
+            return_value=stub._denominator,
+        ):
+            yield
 
     def test_global_hands_exact_views_to_reasoner_once(self):
         source_view, target_view = object(), object()
         stub = _SharedViewStub({A, B, C, D}, {"hermit": {A, B}})
         with self._patch(stub):
             metrics = score_global_coherence([(A, B)], source_view, target_view)
-        self.assertIs(stub.source_view, source_view)
-        self.assertIs(stub.target_view, target_view)
-        self.assertEqual(stub.view_handoffs, 1)
+        self.assertIs(stub.view_calls[0].source, source_view)
+        self.assertIs(stub.view_calls[0].target, target_view)
+        self.assertEqual(len(stub.view_calls), 1)
         self.assertEqual(metrics["global_coherence"], 0.5)
 
     def test_reference_and_local_keep_existing_metric_semantics(self):
@@ -270,7 +317,7 @@ class TestSnapshotFirstAPI(unittest.TestCase):
             reference = score_reference_coherence(
                 [(A, B, "="), (A, B, "=")], source_view, target_view
             )
-        self.assertEqual(reference["asserted_correspondences"], 2)
+        self.assertEqual(reference["asserted_correspondences"], 1)
         self.assertEqual(reference["reasoner_used"], "elk")
         self.assertTrue(reference["lower_bound"])
 
@@ -279,9 +326,17 @@ class TestSnapshotFirstAPI(unittest.TestCase):
             local = score_local_coherence(
                 [(A, B), (A, B), (C, D)], source_view, target_view
             )
-        self.assertEqual(local_stub.merged_pairs, [(A, B), (C, D)])
+        self.assertEqual(local_stub.view_calls[0].pairs, ((A, B, "="), (C, D, "=")))
         self.assertEqual(local["local_coherence_queries"], 3)
         self.assertEqual(local["local_coherence"], round(2 / 3, 12))
+
+    def test_timeout_fallback_receives_the_same_composite(self):
+        stub = _SharedViewStub({A, B}, {"elk": {A}}, timeout_on={"hermit"})
+        with self._patch(stub):
+            metrics = score_global_coherence([(A, B)], object(), object())
+        self.assertEqual(metrics["reasoner_used"], "elk")
+        self.assertEqual(len(stub.view_calls), 2)
+        self.assertIs(stub.view_calls[0], stub.view_calls[1])
 
     def test_wrapper_coerces_each_provider_once_and_forwards_core_options(self):
         source_view, target_view = object(), object()
@@ -302,8 +357,7 @@ class TestSnapshotFirstAPI(unittest.TestCase):
             coercions.append((value, kwargs))
             return value.owl_snapshot()
 
-        fake_core = types.ModuleType("pyowl_core")
-        fake_core.coerce_snapshot = coerce
+        fake_core = _fake_core(coerce)
         stub = _SharedViewStub({A, B, C, D}, {"hermit": {A, B}})
         options, resolver, token = object(), object(), object()
         with tempfile.TemporaryDirectory() as tmp, self._patch(stub), mock.patch.dict(
@@ -329,8 +383,8 @@ class TestSnapshotFirstAPI(unittest.TestCase):
         self.assertTrue(all(item[1]["options"] is options for item in coercions))
         self.assertTrue(all(item[1]["resolver"] is resolver for item in coercions))
         self.assertTrue(all(item[1]["cancellation_token"] is token for item in coercions))
-        self.assertIs(stub.source_view, source_view)
-        self.assertIs(stub.target_view, target_view)
+        self.assertIs(stub.view_calls[0].source, source_view)
+        self.assertIs(stub.view_calls[0].target, target_view)
         self.assertEqual(metrics["global_coherence"], 0.5)
 
     def test_core_loader_exception_is_not_wrapped_or_retried(self):
@@ -343,8 +397,7 @@ class TestSnapshotFirstAPI(unittest.TestCase):
             calls += 1
             raise expected
 
-        fake_core = types.ModuleType("pyowl_core")
-        fake_core.coerce_snapshot = coerce
+        fake_core = _fake_core(coerce)
         stub = _SharedViewStub({A, B}, {"hermit": set()})
         with tempfile.TemporaryDirectory() as tmp, self._patch(stub), mock.patch.dict(
             sys.modules, {"pyowl_core": fake_core}
@@ -354,11 +407,51 @@ class TestSnapshotFirstAPI(unittest.TestCase):
                 score_global_coherence_files(submission, "source", "target")
         self.assertIs(raised.exception, expected)
         self.assertEqual(calls, 1)
-        self.assertEqual(stub.view_handoffs, 0)
+        self.assertEqual(stub.view_calls, [])
 
 
 if _pyowl_core is not None:
     class TestConcreteCoreIdentity(unittest.TestCase):
+        def test_bridge_delta_has_exact_core_axioms_without_serialization(self):
+            source = _pyowl_core.coerce_snapshot(
+                _SRC_OFN.encode("utf-8"), document_iri="urn:document:source"
+            )
+            target = _pyowl_core.coerce_snapshot(
+                _TGT_OFN.encode("utf-8"), document_iri="urn:document:target"
+            )
+            source_axioms = tuple(source.iter_axioms())
+            target_axioms = tuple(target.iter_axioms())
+            correspondences = [
+                (A, B, "equivalent"),
+                (A, B, "equiv"),
+                (C, D, "<"),
+                (B, D, ">"),
+                (A, A, "="),
+            ]
+            with mock.patch.object(
+                Path, "write_text", side_effect=AssertionError("serialization attempted")
+            ):
+                merged = compose_alignment_views(source, target, correspondences)
+
+            def cls(iri):
+                return _pyowl_core.Class(_pyowl_core.IRI(iri))
+            expected = frozenset(
+                {
+                    _pyowl_core.EquivalentClasses(frozenset((cls(A), cls(B)))),
+                    _pyowl_core.SubClassOf(cls(C), cls(D)),
+                    _pyowl_core.SubClassOf(cls(D), cls(B)),
+                }
+            )
+            self.assertEqual(frozenset(merged.delta.add_axioms), expected)
+            self.assertIs(merged.members[0].view, source)
+            self.assertIs(merged.members[1].view, target)
+            self.assertTrue(
+                all(before is after for before, after in zip(source_axioms, source.iter_axioms()))
+            )
+            self.assertTrue(
+                all(before is after for before, after in zip(target_axioms, target.iter_axioms()))
+            )
+
         def test_concrete_snapshots_reach_shared_seam_by_identity(self):
             source = _pyowl_core.coerce_snapshot(
                 _SRC_OFN.encode("utf-8"), document_iri="urn:document:source"
@@ -369,11 +462,47 @@ if _pyowl_core is not None:
             stub = _SharedViewStub({A, B, C, D}, {"hermit": {A, B}})
             with mock.patch(
                 "oaei_bioml_eval.coherence.report.load_reasoner", return_value=stub
+            ), mock.patch.object(
+                _pyowl_core.OntologyComposite,
+                "materialize",
+                side_effect=AssertionError("materialization attempted"),
             ):
                 score_global_coherence([(A, B)], source, target)
-            self.assertIs(stub.source_view, source)
-            self.assertIs(stub.target_view, target)
-            self.assertEqual(stub.view_handoffs, 1)
+            merged = stub.view_calls[0]
+            self.assertIsInstance(merged, _pyowl_core.OntologyComposite)
+            self.assertIs(merged.members[0].view, source)
+            self.assertIs(merged.members[1].view, target)
+            self.assertEqual(tuple(merged.member_roles.values()), ("source", "target"))
+            self.assertIs(_pyowl_core.coerce_snapshot(merged), merged)
+            self.assertEqual(len(stub.view_calls), 1)
+
+        def test_overlay_is_retained_and_its_base_is_unchanged(self):
+            source = _pyowl_core.coerce_snapshot(
+                _SRC_OFN.encode("utf-8"), document_iri="urn:document:source"
+            )
+            target = _pyowl_core.coerce_snapshot(
+                _TGT_OFN.encode("utf-8"), document_iri="urn:document:target"
+            )
+            base_axioms = tuple(source.iter_axioms())
+            addition = _pyowl_core.Declaration(
+                _pyowl_core.Class(_pyowl_core.IRI("http://ex.org/OverlayOnly"))
+            )
+            overlay = _pyowl_core.apply_delta(
+                source, _pyowl_core.OntologyDelta(add_axioms={addition})
+            )
+            stub = _SharedViewStub(
+                {A, B, C, D, "http://ex.org/OverlayOnly"}, {"hermit": {A, B}}
+            )
+            with mock.patch(
+                "oaei_bioml_eval.coherence.report.load_reasoner", return_value=stub
+            ):
+                score_global_coherence([(A, B)], overlay, target)
+            merged = stub.view_calls[0]
+            self.assertIs(merged.members[0].view, overlay)
+            self.assertIs(overlay.base, source)
+            self.assertEqual(tuple(source.iter_axioms()), base_axioms)
+            self.assertNotIn(addition, base_axioms)
+            self.assertIn(addition, tuple(overlay.iter_axioms()))
 
         def test_stream_wrapper_coerces_once_and_keeps_caller_streams_open(self):
             source_stream = io.BytesIO(_SRC_OFN.encode("utf-8"))
@@ -400,9 +529,10 @@ if _pyowl_core is not None:
             self.assertEqual(calls, [source_stream, target_stream])
             self.assertFalse(source_stream.closed)
             self.assertFalse(target_stream.closed)
-            self.assertIsInstance(stub.source_view, _pyowl_core.OntologySnapshot)
-            self.assertIsInstance(stub.target_view, _pyowl_core.OntologySnapshot)
-            self.assertEqual(stub.view_handoffs, 1)
+            merged = stub.view_calls[0]
+            self.assertIsInstance(merged.members[0].view, _pyowl_core.OntologySnapshot)
+            self.assertIsInstance(merged.members[1].view, _pyowl_core.OntologySnapshot)
+            self.assertEqual(len(stub.view_calls), 1)
 
 
 class TestOrchestratorGate(unittest.TestCase):
@@ -440,7 +570,9 @@ class TestOrchestratorGate(unittest.TestCase):
             ranked = _write_ranked(Path(tmp), [(A, [B, C]), (C, [D]), (A, [])])
             m = score_local_coherence_files(ranked, "src", "tgt", reasoner="hermit")
         self.assertEqual((m["local_coherence"], m["local_coherence_queries"]), (0.5, 2))
-        self.assertEqual(stub.merged_pairs, [(A, B), (C, D)])   # deduped committed bridge
+        self.assertEqual(
+            stub.merged_pairs, [(A, B, "="), (C, D, "=")]
+        )  # canonical deduped bridge
 
     def test_local_no_commitments_is_zero(self):
         stub = _StubReasoner({A, B}, {"hermit": set()})
@@ -458,10 +590,10 @@ class TestOrchestratorGate(unittest.TestCase):
 @unittest.skipUnless(_HAS_ROBOT, "ROBOT not on PATH")
 class TestRobotFixture(unittest.TestCase):
     def test_unsat_is_exactly_a_b_denominator_four(self):
-        from oaei_bioml_eval.coherence.reasoner import RobotReasoner
+        from tools.robot_oracle import OracleRobotReasoner
         with tempfile.TemporaryDirectory() as tmp:
             src, tgt = _fixture(Path(tmp))
-            r = RobotReasoner()
+            r = OracleRobotReasoner()
             merged = r.merge(src, tgt, [(A, B)])
             try:
                 self.assertEqual(set(r.named_classes(merged)), {A, B, C, D})           # signature
@@ -473,27 +605,43 @@ class TestRobotFixture(unittest.TestCase):
         self.assertTrue(set(elk.unsatisfiable).issubset(set(hermit.unsatisfiable)))      # EL <= DL lower bound
 
     def test_global_clash_and_coherent(self):
+        from tools.robot_oracle import OracleRobotReasoner
+
         with tempfile.TemporaryDirectory() as tmp:
             src, tgt = _fixture(Path(tmp))
-            clash = score_global_coherence_files(_write_sub(Path(tmp), [(A, B)]), src, tgt, timeout_s=600)
-            ok = score_global_coherence_files(_write_sub(Path(tmp), [(A, D)]), src, tgt, timeout_s=600)
+            with mock.patch(
+                "oaei_bioml_eval.coherence.report.load_reasoner",
+                side_effect=lambda *args, **kwargs: OracleRobotReasoner(),
+            ):
+                clash = score_global_coherence_files(
+                    _write_sub(Path(tmp), [(A, B)]), src, tgt, timeout_s=600
+                )
+                ok = score_global_coherence_files(
+                    _write_sub(Path(tmp), [(A, D)]), src, tgt, timeout_s=600
+                )
         self.assertEqual((clash["unsatisfiable_count"], clash["union_class_count"]), (2, 4))
         self.assertEqual(clash["global_coherence"], 0.5)
         self.assertEqual(ok["unsatisfiable_count"], 0)            # A=D, no disjointness -> clean
         self.assertEqual(ok["global_coherence"], 0.0)
 
     def test_local_half_incoherent(self):
+        from tools.robot_oracle import OracleRobotReasoner
+
         with tempfile.TemporaryDirectory() as tmp:
             src, tgt = _fixture(Path(tmp))
             ranked = _write_ranked(Path(tmp), [(A, [B, C]), (C, [D]), (A, [])])
-            m = score_local_coherence_files(ranked, src, tgt, timeout_s=600)
+            with mock.patch(
+                "oaei_bioml_eval.coherence.report.load_reasoner",
+                return_value=OracleRobotReasoner(),
+            ):
+                m = score_local_coherence_files(ranked, src, tgt, timeout_s=600)
         self.assertEqual((m["local_coherence"], m["local_coherence_queries"]), (0.5, 2))
 
     def test_numerator_excludes_explanatory_context(self):
         # regression for the dump-over-count bug: only A is unsatisfiable, but its
         # explanation spans the satisfiable P,Q,R,T. the log-parse must return {A}; the
         # old --dump-unsatisfiable path returned all five (the explanatory module).
-        from oaei_bioml_eval.coherence.reasoner import RobotReasoner
+        from tools.robot_oracle import OracleRobotReasoner
         onto = (
             "Prefix(:=<http://ex.org/>)\nOntology(<http://ex.org/o>\n"
             f"  Declaration(Class(<{A}>))\n  Declaration(Class(<http://ex.org/P>))\n"
@@ -506,7 +654,7 @@ class TestRobotFixture(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "o.ofn").write_text(onto, encoding="utf-8")
             (Path(tmp) / "empty.ofn").write_text("Ontology(<http://ex.org/empty>)\n", encoding="utf-8")
-            r = RobotReasoner()
+            r = OracleRobotReasoner()
             merged = r.merge(Path(tmp) / "o.ofn", Path(tmp) / "empty.ofn", [])   # clash already in o.ofn
             try:
                 denom = set(r.named_classes(merged))
@@ -538,7 +686,7 @@ class TestMalformedIris(unittest.TestCase):
     _RUNON = "http://snomed.info/id/1295447006\nhttp://snomed.info/id/1295449009"
 
     def test_validator_flags_embedded_whitespace(self):
-        from oaei_bioml_eval.coherence.reasoner import invalid_alignment_iris
+        from oaei_bioml_eval.coherence.bridge import invalid_alignment_iris
         self.assertEqual(invalid_alignment_iris([(A, B)]), [])
         self.assertEqual(invalid_alignment_iris([(A, self._RUNON)]), [self._RUNON])
 
@@ -570,7 +718,9 @@ class TestMalformedIris(unittest.TestCase):
             write_tsv(sub, [{"SrcEntity": A, "TgtEntity": B},
                             {"SrcEntity": A, "TgtEntity": self._RUNON}], ["SrcEntity", "TgtEntity"])
             score_global_coherence_files(sub, "/no/src.owl", "/no/tgt.owl", skip_invalid=True)
-        self.assertEqual(captured["pairs"], [(A, B)])   # the run-on pair dropped, the clean one kept
+        self.assertEqual(
+            captured["pairs"], [(A, B, "=")]
+        )  # the run-on pair dropped, the clean one kept
 
 
 if __name__ == "__main__":

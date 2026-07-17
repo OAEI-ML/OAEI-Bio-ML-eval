@@ -8,22 +8,78 @@ import hashlib
 import json
 import subprocess
 import sys
+import tempfile
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from oaei_bioml_eval.coherence.reasoner import (  # noqa: E402
-    RobotReasoner,
+from oaei_bioml_eval.coherence.bridge import (  # noqa: E402
+    Correspondence,
     normalize_correspondences,
 )
+from oaei_bioml_eval.coherence.reasoner import MergedOntology, RobotReasoner  # noqa: E402
 
 BASELINE = ROOT / "tests" / "baselines" / "robot-1.9.10.json"
 FIXTURES = ROOT / "tests" / "fixtures" / "coherence-oracle"
 IRI = "http://ex.org/"
+
+
+def _write_bridge(path: Path, pairs: Iterable[object]) -> None:
+    """Quarantined serializer used only to regenerate the pinned Java oracle."""
+
+    ordered = normalize_correspondences(cast(Iterable[Correspondence], pairs))
+    iris = sorted({iri for source, target, _ in ordered for iri in (source, target)})
+    lines = ["Ontology(<https://w3id.org/oaei-bioml/coherence/oracle-bridge>"]
+    lines.extend(f"  Declaration(Class(<{iri}>))" for iri in iris)
+    for source, target, relation in ordered:
+        if relation == "=":
+            lines.append(f"  EquivalentClasses(<{source}> <{target}>)")
+        elif relation == "<=":
+            lines.append(f"  SubClassOf(<{source}> <{target}>)")
+        else:
+            lines.append(f"  SubClassOf(<{target}> <{source}>)")
+    lines.append(")")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+class OracleRobotReasoner(RobotReasoner):
+    """Repository-only legacy merge kept outside the installable package."""
+
+    def merge(
+        self,
+        src_owl: Path,
+        tgt_owl: Path,
+        pairs: Iterable[object],
+    ) -> MergedOntology:
+        workdir = Path(tempfile.mkdtemp(prefix="coh-robot-oracle-"))
+        bridge = workdir / "bridge.ofn"
+        merged = workdir / "merged.ttl"
+        _write_bridge(bridge, pairs)
+        code, log = self._run(
+            [
+                *self._base_cmd(),
+                "merge",
+                "--input",
+                str(src_owl),
+                "--input",
+                str(tgt_owl),
+                "--input",
+                str(bridge),
+                "--output",
+                str(merged),
+            ],
+            timeout_s=None,
+            label="oracle:merge",
+        )
+        if code != 0:
+            self.dispose(MergedOntology(merged, workdir))
+            raise RuntimeError(f"ROBOT oracle merge failed (exit {code}):\n{log[-2000:]}")
+        return MergedOntology(merged, workdir)
 
 CASES: dict[str, tuple[str, str, tuple[tuple[str, ...], ...]]] = {
     "equivalence_clash": (
@@ -76,7 +132,7 @@ def _command_output(command: list[str]) -> str:
 def capture(robot_jar: Path, java: Path, *, timeout_s: float) -> dict[str, Any]:
     """Run every small oracle case and return a time-free deterministic payload."""
 
-    reasoner = RobotReasoner(
+    reasoner = OracleRobotReasoner(
         robot_jar=robot_jar,
         java=str(java),
         heap="4g",
