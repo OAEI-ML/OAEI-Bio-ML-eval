@@ -7,9 +7,12 @@ ontology representation or serialization format.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
+import json
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, TypeAlias
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 if TYPE_CHECKING:
     from pyowl_core import (
@@ -44,6 +47,44 @@ _BAD_IRI_CHARS = frozenset(' \t\n\r\x0b\x0c<>"{}|^`\\')
 
 class SnapshotCompatibilityError(RuntimeError):
     """The optional shared-OWL coherence stack is absent or too old."""
+
+
+@dataclass(frozen=True, slots=True)
+class BridgeNormalization:
+    """Canonical bridge plus deterministic, non-identifying normalization evidence."""
+
+    correspondences: tuple[NormalizedCorrespondence, ...]
+    input_count: int
+    duplicate_count: int
+    self_pair_count: int
+    invalid_dropped_count: int = 0
+
+    def __post_init__(self) -> None:
+        if self.correspondences != tuple(sorted(set(self.correspondences))):
+            raise ValueError("correspondences must be sorted and duplicate-free")
+        for name in (
+            "input_count",
+            "duplicate_count",
+            "self_pair_count",
+            "invalid_dropped_count",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a nonnegative integer")
+        if (
+            len(self.correspondences) + self.duplicate_count + self.self_pair_count
+            != self.input_count
+        ):
+            raise ValueError("bridge normalization counts do not reconcile")
+
+    @property
+    def fingerprint(self) -> str:
+        payload = json.dumps(
+            self.correspondences,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hashlib.sha256(b"oaei-bioml:bridge:v1\0" + payload).hexdigest()
 
 
 def coerce_ontology_pair_once(
@@ -85,8 +126,28 @@ def normalize_correspondences(
     bridge axioms.  Unsupported relations fail before composition.
     """
 
+    return analyze_correspondences(items).correspondences
+
+
+def analyze_correspondences(
+    items: Iterable[Correspondence],
+    *,
+    invalid_dropped_count: int = 0,
+) -> BridgeNormalization:
+    """Normalize once while retaining the counts required by provenance."""
+
+    if (
+        isinstance(invalid_dropped_count, bool)
+        or not isinstance(invalid_dropped_count, int)
+        or invalid_dropped_count < 0
+    ):
+        raise ValueError("invalid_dropped_count must be a nonnegative integer")
     normalized: set[NormalizedCorrespondence] = set()
+    input_count = 0
+    self_pair_count = 0
+    nonself_count = 0
     for original in items:
+        input_count += 1
         item = tuple(original)
         if len(item) not in {2, 3}:
             raise ValueError(
@@ -100,9 +161,19 @@ def normalize_correspondences(
                 f"bridge correspondence ({source}, {target}) has unsupported relation "
                 f"{relation!r}; expected one of =, equivalent, equiv, <=, >=, <, >."
             )
-        if source != target:
+        if source == target:
+            self_pair_count += 1
+        else:
+            nonself_count += 1
             normalized.add((source, target, relation))
-    return tuple(sorted(normalized))
+    ordered = tuple(sorted(normalized))
+    return BridgeNormalization(
+        correspondences=ordered,
+        input_count=input_count,
+        duplicate_count=nonself_count - len(ordered),
+        self_pair_count=self_pair_count,
+        invalid_dropped_count=invalid_dropped_count,
+    )
 
 
 def invalid_alignment_iris(items: Iterable[Correspondence]) -> list[str]:
@@ -139,7 +210,7 @@ def compose_alignment_views(
         raise SnapshotCompatibilityError(
             "pyowl-core compose_views did not return OntologyComposite"
         )
-    return merged
+    return cast(OntologyComposite, merged)
 
 
 def named_class_iris(view: OntologyView) -> tuple[str, ...]:
@@ -193,9 +264,11 @@ def _shared_core() -> Any:
 
 
 __all__ = [
+    "BridgeNormalization",
     "Correspondence",
     "NormalizedCorrespondence",
     "SnapshotCompatibilityError",
+    "analyze_correspondences",
     "coerce_ontology_pair_once",
     "compose_alignment_views",
     "invalid_alignment_iris",

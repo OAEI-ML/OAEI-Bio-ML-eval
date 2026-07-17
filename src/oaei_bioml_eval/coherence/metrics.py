@@ -36,7 +36,9 @@ _COUNT_METRICS_COHERENCE = frozenset({
 })
 
 # per-task annotations macro can't average (carried per cell, not aggregated)
-_ANNOTATION_KEYS = frozenset({"reasoner_used", "lower_bound"})
+_ANNOTATION_KEYS = frozenset(
+    {"reasoner_used", "lower_bound", "inconsistent", "provenance"}
+)
 
 
 def global_coherence_ratio(unsatisfiable_count: int, union_class_count: int) -> float:

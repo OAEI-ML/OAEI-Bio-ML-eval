@@ -29,6 +29,7 @@ from oaei_bioml_eval.coherence.reasoner import (
     _parse_unsatisfiable,
     load_reasoner,
 )
+from oaei_bioml_eval.coherence.native_reasoners import HermiTTimeoutError
 from oaei_bioml_eval.coherence.report import (
     score_global_coherence,
     score_global_coherence_files,
@@ -138,11 +139,11 @@ class TestMetricsCore(unittest.TestCase):
 
 
 class TestReasonerFactory(unittest.TestCase):
-    def test_default_is_robot(self):
+    def test_default_is_native(self):
         with mock.patch.dict("os.environ", {}, clear=False):
             import os
             os.environ.pop("OAEI_COHERENCE_BACKEND", None)
-            self.assertEqual(load_reasoner().name, "robot")
+            self.assertEqual(load_reasoner().name, "native")
 
     def test_env_selects_backend(self):
         with mock.patch.dict("os.environ", {"OAEI_COHERENCE_BACKEND": "robot"}):
@@ -245,6 +246,8 @@ class _SharedViewStub(_StubReasoner):
     def unsatisfiable_classes_view(self, ontology, *, which, timeout_s):
         self.view_calls.append(ontology)
         if which in self._timeout_on:
+            if which == "hermit":
+                raise HermiTTimeoutError(f"stub timeout on {which}")
             raise TimeoutError(f"stub timeout on {which}")
         return UnsatResult(tuple(sorted(self._unsat.get(which, ()))), which, 0.0)
 

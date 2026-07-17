@@ -5,19 +5,18 @@ A degree of INCOHERENCE in [0, 1] — **0 = clean, higher = worse** (NOT a goodn
 score). Two surfaces, named distinctly so the proxy is never read as the official
 value:
 
-  * OFFICIAL (reasoner-based, organiser-computed): merge the alignment + both OWLs
-    (one EquivalentClasses per `=` correspondence), classify, report the
-    unsatisfiable-class count and `global_coherence` = count / |merged signature|.
-    `local_coherence` is the same over each query's rank-1 committed mapping. HermiT
-    (DL, exact); ELK (EL) on the wall-clock gate, rendered `>=`. Behind a reasoner
-    backend (ROBOT default subprocess; DeepOnto optional warm-JVM fast-path).
+  * OFFICIAL (reasoner-based, organiser-computed): compose the alignment bridge over
+    both shared OWL views, classify once, and report the unsatisfiable-class count
+    plus `global_coherence` = count / |composite signature|. `local_coherence` is
+    the same over each query's rank-1 commitment. Native pyHermiT provides the exact
+    DL result; a cooperative HermiT timeout alone falls back to pyELK over the same
+    composite and is labeled as an EL lower bound.
   * PROXY (dependency-free, participant self-guidance): `structural_coherence_proxy`
     — a reasoner-free structural heuristic (STUB until its rules are fixed).
 
-The metric core (`metrics`) + the proxy (`structural`) are dependency-free; the
-reasoner path needs the `[reasoner]` extra (rdflib + an external ROBOT) or the
-`[deeponto]` extra. May import `hierarchy.HierarchyIndex` read-only; does not touch
-the frozen typed/ API.
+The metric core (`metrics`) + proxy (`structural`) remain dependency-free. Native
+reasoner packages are imported lazily only by official classification. This module
+does not touch the frozen typed/ API.
 """
 from __future__ import annotations
 
@@ -28,6 +27,16 @@ from .metrics import (
     local_coherence_aggregate,
     macro_average_across_tasks,
     micro_average_across_tasks,
+)
+from .native_reasoners import (
+    ELKReasoner,
+    ELKTimeoutError,
+    HermiTReasoner,
+    HermiTTimeoutError,
+    NativeReasoner,
+    NativeReasonerCompatibilityError,
+    NativeReasonerUnavailableError,
+    NativeWorkerError,
 )
 from .reasoner import CoherenceReasoner, MergedOntology, UnsatResult, load_reasoner
 from .report import (
@@ -44,6 +53,10 @@ from .report import (
 __all__ = [
     "aggregate_across_tasks",
     "CoherenceReasoner",
+    "ELKReasoner",
+    "ELKTimeoutError",
+    "HermiTReasoner",
+    "HermiTTimeoutError",
     "MergedOntology",
     "UnsatResult",
     "_COUNT_METRICS_COHERENCE",
@@ -52,6 +65,10 @@ __all__ = [
     "local_coherence_aggregate",
     "macro_average_across_tasks",
     "micro_average_across_tasks",
+    "NativeReasoner",
+    "NativeReasonerCompatibilityError",
+    "NativeReasonerUnavailableError",
+    "NativeWorkerError",
     "SnapshotCompatibilityError",
     "score_global_coherence",
     "score_global_coherence_files",

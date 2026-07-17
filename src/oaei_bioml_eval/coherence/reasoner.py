@@ -1,24 +1,23 @@
 """Reasoner adapter seam plus quarantined pre-native differential backends.
 
-The official O2 path composes exact shared views in ``coherence.bridge`` and
+The official O3 path composes exact shared views in ``coherence.bridge`` and
 passes one ``OntologyComposite`` to ``unsatisfiable_classes_view``. It never asks
 a reasoner to merge or serialize ontologies. The file-handle methods and Java
 classes below remain temporarily for O0 differential evidence and are deleted in
-O4 after native adapters land in O3. ``load_reasoner`` currently picks:
+O4. ``load_reasoner`` currently picks:
 
+  * 'native'    (default) lazy pyHermiT/pyELK adapters over the shared composite;
   * 'robot'     the repository-only ROBOT differential classifier;
   * 'deeponto'  an OPTIONAL in-process fast-path reusing a warm JVM via direct
                 OWLAPI; behind the [deeponto] extra (lazy import). Older HermiT/ELK
                 than ROBOT -> exploratory, never mixed with ROBOT numbers on a board.
-  * 'owlapi'    a direct-OWLAPI/JPype binding (we would own the JAR lifecycle); not
-                implemented (use 'robot' or 'deeponto').
+  * 'owlapi'    a never-implemented direct-OWLAPI/JPype placeholder.
 
-All bindings drive the SAME HermiT (DL, exact) / ELK (EL, a `>=` lower bound)
-underneath, so they are interchangeable up to reasoner VERSION — counts are
-version-dependent, so pin one for released numbers. The HermiT-timeout -> ELK 
-gate lives ABOVE this seam (report.py), so the policy is backend-independent. 
-The shared composite is built once and reused for its signature and every native
-reasoner pass, so the denominator and axioms are identical.
+The native implementations target the pinned HermiT/ELK behavior. Quarantined
+Java outputs are differential evidence, not a runtime fallback or an assertion of
+agreement before the O3 semantic gates run. The HermiT-timeout -> ELK gate lives
+above this seam in ``report.py``. One shared composite is reused for its signature
+and every native pass, so the denominator and axioms are identical.
 """
 from __future__ import annotations
 
@@ -30,9 +29,9 @@ import subprocess
 import time
 from abc import ABC
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from .bridge import normalize_correspondences
 
@@ -47,6 +46,9 @@ class UnsatResult:
     unsatisfiable: tuple[str, ...]
     reasoner_used: str          # 'hermit' | 'elk'
     elapsed_seconds: float
+    provenance: Mapping[str, Any] = field(default_factory=dict)
+    inconsistent: bool = False
+    fallback_reason: str | None = None
 
 
 @dataclass
@@ -61,7 +63,7 @@ class MergedOntology:
 
 class CoherenceReasoner(ABC):
     name: str = "base"
-    # Native adapters opt into the O2 shared composite handoff. Legacy Java
+    # Native adapters opt into the O3 shared composite handoff. Legacy Java
     # differential oracles keep the file-only methods until O4 deletes them.
     accepts_ontology_views: bool = False
 
@@ -105,25 +107,34 @@ class CoherenceReasoner(ABC):
 def load_reasoner(backend: str | None = None, *, robot_jar=None, java=None,
                   heap: str | None = None, robot_cmd=None) -> CoherenceReasoner:
     """
-    pick a backend: explicit arg > $OAEI_COHERENCE_BACKEND > 'robot'. robot_jar/java/
-    robot_cmd are ROBOT-only (not forwarded to DeepOnto); heap applies to either.
+    Pick the O3 native dispatcher by default. Explicit legacy backend selection and
+    its environment variable remain only until O4 deletes the quarantined Java
+    differential surfaces.
     """
-    backend = (backend or os.environ.get("OAEI_COHERENCE_BACKEND") or "robot").lower()
+    backend = (backend or os.environ.get("OAEI_COHERENCE_BACKEND") or "native").lower()
+    if backend == "native":
+        from .native_reasoners import NativeReasoner
+
+        return NativeReasoner()
     if backend == "robot":
         return RobotReasoner(robot_jar=robot_jar, java=java, heap=heap, robot_cmd=robot_cmd)
     if backend == "deeponto":
         return DeepOntoReasoner(heap=heap or "16g")
     if backend == "owlapi":
-        raise NotImplementedError("the direct-OWLAPI/JPype backend is not implemented; use 'robot' (default) or 'deeponto'.")
-    raise ValueError(f"unknown coherence backend {backend!r}; known: robot, deeponto, owlapi.")
+        raise NotImplementedError(
+            "the direct-OWLAPI/JPype backend was never implemented; use 'native'"
+        )
+    raise ValueError(
+        f"unknown coherence backend {backend!r}; known: native, robot, deeponto, owlapi."
+    )
 
 
 ##
-# bridge + signature helpers (shared)
-# -----------------------------------
+# legacy ROBOT signature helpers
+# ------------------------------
 ##
 
-# the denominator: named classes of the MERGED ontology, via `robot query` (a Jena SPARQL
+# Legacy denominator via `robot query` (a Jena SPARQL
 # over the loaded model) — NOT rdflib, whose recursive Turtle parser blows the recursion
 # limit on SNOMED's deeply-nested class expressions, and NOT RDF/XML, which won't serialise
 # SNOMED's digit-IRI annotation properties. owl:Thing/Nothing are subtracted by the caller.
