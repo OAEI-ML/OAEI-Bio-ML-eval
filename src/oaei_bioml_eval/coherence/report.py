@@ -1,6 +1,6 @@
 """
 oaei_bioml_eval.coherence.report: file -> coherence metric-dict entry points + the
-reasoner orchestrator (the HermiT-timeout -> ELK gate, backend-independent).
+reasoner orchestrator (the HermiT-timeout -> ELK gate).
 
 `score_global_coherence_files` composes a global `=` alignment over both ontology
 views, classifies it, and returns the unsatisfiable-class count + the degree of
@@ -16,12 +16,11 @@ denominator).
 """
 from __future__ import annotations
 
-import os
 import sys
 from collections.abc import Iterable
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar, cast
 
 if TYPE_CHECKING:
     from pyowl_core import (
@@ -39,7 +38,6 @@ from ..io import write_json
 from . import structural
 from .bridge import (
     Correspondence,
-    SnapshotCompatibilityError,
     analyze_correspondences,
     coerce_ontology_pair_once,
     compose_alignment_views,
@@ -48,12 +46,7 @@ from .bridge import (
 )
 from .loaders import load_committed_top1, load_global_pairs, load_relation_typed_correspondences
 from .metrics import global_coherence_ratio, local_coherence_aggregate
-from .reasoner import (
-    CoherenceReasoner,
-    MergedOntology,
-    UnsatResult,
-    load_reasoner,
-)
+from .reasoner import CoherenceReasoner, UnsatResult, load_reasoner
 from .native_reasoners import HermiTTimeoutError
 from .provenance import build_coherence_provenance
 
@@ -70,7 +63,7 @@ def _validated_pairs(
     reject (or, if skip_invalid, drop) correspondences whose IRIs are malformed —
     embedded whitespace/control means several IRIs run together (a corrupted alignment,
     or a malformed/truncated input OWL). caught here so the failure is a clear message,
-    not a cryptic ROBOT "invalid characters" abort mid-merge.
+    not a cryptic parser failure after ontology composition.
     """
     pairs = list(pairs)
     bad = invalid_alignment_iris(cast(Iterable[tuple[str, str]], pairs))
@@ -92,22 +85,6 @@ def _validated_pairs(
         if tuple(item)[0] not in bad_set and tuple(item)[1] not in bad_set
     ]
     return retained, len(pairs) - len(retained)
-
-
-def _classify_with_gate(
-    reasoner: CoherenceReasoner,
-    merged: MergedOntology,
-    *,
-    prefer: ReasonerName,
-    timeout_s: float | None,
-) -> UnsatResult:
-    """run `prefer`; on a HermiT wall-clock timeout fall back to ELK (EL <= DL -> a valid `>=`)"""
-    try:
-        return reasoner.unsatisfiable_classes(merged, which=prefer, timeout_s=timeout_s)
-    except TimeoutError:
-        if prefer == "hermit":
-            return reasoner.unsatisfiable_classes(merged, which="elk", timeout_s=timeout_s)
-        raise
 
 
 def _classify_view_with_gate(
@@ -142,73 +119,41 @@ def _classify_view_with_gate(
 
 def _coherence_over_pairs(
     reasoner: CoherenceReasoner,
-    source: object,
-    target: object,
+    source: OntologyView,
+    target: OntologyView,
     pairs: Iterable[object],
     *,
     prefer: ReasonerName,
     timeout_s: float | None,
-    shared_views: bool = False,
-) -> tuple[tuple[str, ...], UnsatResult, object | None]:
-    """Compose/merge once, classify once, and enforce result integrity.
+) -> tuple[tuple[str, ...], UnsatResult, OntologyView]:
+    """Compose once, classify once, and enforce result integrity."""
 
-    The shared branch owns the only official O2 bridge: a core delta over one
-    zero-copy composite. The path branch is retained only for quarantined Java
-    differential captures and disappears in O4.
-    """
-    result_view: object | None = None
-    if shared_views:
-        merged_view = compose_alignment_views(
-            cast(OntologyView, source),
-            cast(OntologyView, target),
-            cast(Iterable[Correspondence], pairs),
-        )
-        denominator = named_class_iris(merged_view)
-        result = _classify_view_with_gate(
-            reasoner,
-            merged_view,
-            prefer=prefer,
-            timeout_s=timeout_s,
-        )
-        result_view = merged_view
-    else:
-        if not isinstance(source, (str, os.PathLike)) or not isinstance(
-            target, (str, os.PathLike)
-        ):
-            raise SnapshotCompatibilityError(
-                "legacy differential backends accept ontology paths only"
-            )
-        merged = reasoner.merge(Path(source), Path(target), pairs)
-        try:
-            denominator = reasoner.named_classes(merged)
-            result = _classify_with_gate(
-                reasoner, merged, prefer=prefer, timeout_s=timeout_s
-            )
-        finally:
-            reasoner.dispose(merged)
+    merged_view = compose_alignment_views(
+        source,
+        target,
+        cast(Iterable[Correspondence], pairs),
+    )
+    denominator = named_class_iris(merged_view)
+    result = _classify_view_with_gate(
+        reasoner,
+        merged_view,
+        prefer=prefer,
+        timeout_s=timeout_s,
+    )
     stray = set(result.unsatisfiable) - set(denominator)
     if stray:   # numerator must lie within the merged signature
         raise AssertionError(f"unsatisfiable IRIs absent from the merged signature: {sorted(stray)}")
-    return denominator, result, result_view
-
-
-def _require_shared_view_reasoner(reasoner: CoherenceReasoner) -> None:
-    if not reasoner.accepts_ontology_views:
-        raise SnapshotCompatibilityError(
-            f"{type(reasoner).__name__} is the quarantined file-only differential oracle; "
-            "snapshot-first coherence requires a native shared-view adapter"
-        )
+    return denominator, result, merged_view
 
 
 def _global_report(
     rsnr: CoherenceReasoner,
     pairs: Iterable[Correspondence],
-    source: object,
-    target: object,
+    source: OntologyView,
+    target: OntologyView,
     *,
     reasoner: ReasonerName,
     timeout_s: float | None,
-    shared_views: bool,
     invalid_dropped_count: int = 0,
     api_options: dict[str, object] | None = None,
     include_asserted_correspondences: bool = False,
@@ -223,7 +168,6 @@ def _global_report(
         bridge.correspondences,
         prefer=reasoner,
         timeout_s=timeout_s,
-        shared_views=shared_views,
     )
     union, count = len(denominator), len(result.unsatisfiable)
     metrics: MetricReport = {
@@ -234,16 +178,15 @@ def _global_report(
         "lower_bound": result.reasoner_used == "elk",
         "inconsistent": result.inconsistent,
     }
-    if shared_views and merged_view is not None:
-        metrics["provenance"] = build_coherence_provenance(
-            merged_view,
-            bridge,
-            denominator,
-            result,
-            requested_reasoner=reasoner,
-            timeout_s=timeout_s,
-            api_options=api_options,
-        )
+    metrics["provenance"] = build_coherence_provenance(
+        merged_view,
+        bridge,
+        denominator,
+        result,
+        requested_reasoner=reasoner,
+        timeout_s=timeout_s,
+        api_options=api_options,
+    )
     if include_asserted_correspondences:
         metrics["asserted_correspondences"] = len(bridge.correspondences)
     return metrics
@@ -252,12 +195,11 @@ def _global_report(
 def _local_report(
     rsnr: CoherenceReasoner,
     committed: list[tuple[str, str]],
-    source: object,
-    target: object,
+    source: OntologyView,
+    target: OntologyView,
     *,
     reasoner: ReasonerName,
     timeout_s: float | None,
-    shared_views: bool,
     invalid_dropped_count: int = 0,
     api_options: dict[str, object] | None = None,
 ) -> MetricReport:
@@ -270,24 +212,23 @@ def _local_report(
             "lower_bound": reasoner == "elk",
             "inconsistent": False,
         }
-        if shared_views:
-            bridge = analyze_correspondences(
-                (), invalid_dropped_count=invalid_dropped_count
-            )
-            empty_merged = compose_alignment_views(
-                cast(OntologyView, source), cast(OntologyView, target), ()
-            )
-            denominator = named_class_iris(empty_merged)
-            not_run = UnsatResult((), "not-run", 0.0)
-            empty_metrics["provenance"] = build_coherence_provenance(
-                empty_merged,
-                bridge,
-                denominator,
-                not_run,
-                requested_reasoner=reasoner,
-                timeout_s=timeout_s,
-                api_options=api_options,
-            )
+        bridge = analyze_correspondences(
+            (), invalid_dropped_count=invalid_dropped_count
+        )
+        empty_merged = compose_alignment_views(
+            source, target, ()
+        )
+        denominator = named_class_iris(empty_merged)
+        not_run = UnsatResult((), "not-run", 0.0)
+        empty_metrics["provenance"] = build_coherence_provenance(
+            empty_merged,
+            bridge,
+            denominator,
+            not_run,
+            requested_reasoner=reasoner,
+            timeout_s=timeout_s,
+            api_options=api_options,
+        )
         return empty_metrics
     bridge = analyze_correspondences(
         committed, invalid_dropped_count=invalid_dropped_count
@@ -299,7 +240,6 @@ def _local_report(
         bridge.correspondences,
         prefer=reasoner,
         timeout_s=timeout_s,
-        shared_views=shared_views,
     )
     unsat = set(result.unsatisfiable)
     flags = [(src in unsat or tgt in unsat) for src, tgt in committed]
@@ -309,16 +249,15 @@ def _local_report(
         "lower_bound": result.reasoner_used == "elk",
         "inconsistent": result.inconsistent,
     }
-    if shared_views and merged_view is not None:
-        metrics["provenance"] = build_coherence_provenance(
-            merged_view,
-            bridge,
-            denominator,
-            result,
-            requested_reasoner=reasoner,
-            timeout_s=timeout_s,
-            api_options=api_options,
-        )
+    metrics["provenance"] = build_coherence_provenance(
+        merged_view,
+        bridge,
+        denominator,
+        result,
+        requested_reasoner=reasoner,
+        timeout_s=timeout_s,
+        api_options=api_options,
+    )
     return metrics
 
 
@@ -340,7 +279,6 @@ def score_global_coherence(
         correspondences, "correspondences", skip_invalid=skip_invalid
     )
     rsnr = load_reasoner()
-    _require_shared_view_reasoner(rsnr)
     return _global_report(
         rsnr,
         pairs,
@@ -348,7 +286,6 @@ def score_global_coherence(
         target,
         reasoner=reasoner,
         timeout_s=timeout_s,
-        shared_views=True,
         invalid_dropped_count=invalid_dropped,
         api_options={"metric": "global", "skip_invalid": skip_invalid},
     )
@@ -372,7 +309,6 @@ def score_reference_coherence(
         correspondences, "correspondences", skip_invalid=skip_invalid
     )
     rsnr = load_reasoner()
-    _require_shared_view_reasoner(rsnr)
     return _global_report(
         rsnr,
         typed,
@@ -380,7 +316,6 @@ def score_reference_coherence(
         target,
         reasoner=reasoner,
         timeout_s=timeout_s,
-        shared_views=True,
         invalid_dropped_count=invalid_dropped,
         api_options={"metric": "reference", "skip_invalid": skip_invalid},
         include_asserted_correspondences=True,
@@ -405,7 +340,6 @@ def score_local_coherence(
         committed_top1, "committed_top1", skip_invalid=skip_invalid
     )
     rsnr = load_reasoner()
-    _require_shared_view_reasoner(rsnr)
     return _local_report(
         rsnr,
         committed,
@@ -413,14 +347,12 @@ def score_local_coherence(
         target,
         reasoner=reasoner,
         timeout_s=timeout_s,
-        shared_views=True,
         invalid_dropped_count=invalid_dropped,
         api_options={"metric": "local", "skip_invalid": skip_invalid},
     )
 
 
-def _coerce_for_shared_backend(
-    rsnr: CoherenceReasoner,
+def _coerce_ontology_pair(
     source: OntologyInput,
     target: OntologyInput,
     *,
@@ -429,9 +361,7 @@ def _coerce_for_shared_backend(
     load_options: LoadOptions | None,
     resolver: ImportResolver | None,
     cancellation_token: CancellationToken | None,
-) -> tuple[object, object] | None:
-    if not rsnr.accepts_ontology_views:
-        return None
+) -> tuple[OntologyView, OntologyView]:
     return coerce_ontology_pair_once(
         source,
         target,
@@ -451,28 +381,19 @@ def score_global_coherence_files(
     reasoner: ReasonerName = "hermit",
     timeout_s: float | None = 7200.0,
     output_path: str | Path | None = None,
-    backend: str | None = None,
-    robot_jar: str | Path | None = None,
     skip_invalid: bool = False,
     source_document_iri: IRI | str | None = None,
     target_document_iri: IRI | str | None = None,
     load_options: LoadOptions | None = None,
     resolver: ImportResolver | None = None,
     cancellation_token: CancellationToken | None = None,
-    **reasoner_kwargs: Any,
 ) -> MetricReport:
-    """Load each ontology once, then score degree of incoherence (0 clean; higher worse).
-
-    The full ``pyowl_core.OntologyInput`` surface is accepted when a shared-view
-    adapter is active.  Legacy Java backends retain path-only behavior solely for
-    differential capture until O4.
-    """
+    """Load each ontology once, then score degree of incoherence (0 clean; higher worse)."""
     pairs, invalid_dropped = _validated_pairs(
         load_global_pairs(submission_path), submission_path, skip_invalid=skip_invalid
     )
-    rsnr = load_reasoner(backend, robot_jar=robot_jar, **reasoner_kwargs)
-    views = _coerce_for_shared_backend(
-        rsnr,
+    rsnr = load_reasoner()
+    source, target = _coerce_ontology_pair(
         src_owl,
         tgt_owl,
         source_document_iri=source_document_iri,
@@ -481,8 +402,6 @@ def score_global_coherence_files(
         resolver=resolver,
         cancellation_token=cancellation_token,
     )
-    shared = views is not None
-    source, target = views if views is not None else (src_owl, tgt_owl)
     metrics = _global_report(
         rsnr,
         pairs,
@@ -490,7 +409,6 @@ def score_global_coherence_files(
         target,
         reasoner=reasoner,
         timeout_s=timeout_s,
-        shared_views=shared,
         invalid_dropped_count=invalid_dropped,
         api_options={"metric": "global", "skip_invalid": skip_invalid},
     )
@@ -507,15 +425,12 @@ def score_reference_coherence_files(
     reasoner: ReasonerName = "elk",
     timeout_s: float | None = 7200.0,
     output_path: str | Path | None = None,
-    backend: str | None = None,
-    robot_jar: str | Path | None = None,
     skip_invalid: bool = False,
     source_document_iri: IRI | str | None = None,
     target_document_iri: IRI | str | None = None,
     load_options: LoadOptions | None = None,
     resolver: ImportResolver | None = None,
     cancellation_token: CancellationToken | None = None,
-    **reasoner_kwargs: Any,
 ) -> MetricReport:
     """Load once and score a filtered repaired reference's degree of incoherence."""
     typed, invalid_dropped = _validated_pairs(
@@ -523,9 +438,8 @@ def score_reference_coherence_files(
         reference_path,
         skip_invalid=skip_invalid,
     )
-    rsnr = load_reasoner(backend, robot_jar=robot_jar, **reasoner_kwargs)
-    views = _coerce_for_shared_backend(
-        rsnr,
+    rsnr = load_reasoner()
+    source, target = _coerce_ontology_pair(
         src_owl,
         tgt_owl,
         source_document_iri=source_document_iri,
@@ -534,8 +448,6 @@ def score_reference_coherence_files(
         resolver=resolver,
         cancellation_token=cancellation_token,
     )
-    shared = views is not None
-    source, target = views if views is not None else (src_owl, tgt_owl)
     metrics = _global_report(
         rsnr,
         typed,
@@ -543,7 +455,6 @@ def score_reference_coherence_files(
         target,
         reasoner=reasoner,
         timeout_s=timeout_s,
-        shared_views=shared,
         invalid_dropped_count=invalid_dropped,
         api_options={"metric": "reference", "skip_invalid": skip_invalid},
         include_asserted_correspondences=True,
@@ -561,23 +472,19 @@ def score_local_coherence_files(
     reasoner: ReasonerName = "hermit",
     timeout_s: float | None = 7200.0,
     output_path: str | Path | None = None,
-    backend: str | None = None,
-    robot_jar: str | Path | None = None,
     skip_invalid: bool = False,
     source_document_iri: IRI | str | None = None,
     target_document_iri: IRI | str | None = None,
     load_options: LoadOptions | None = None,
     resolver: ImportResolver | None = None,
     cancellation_token: CancellationToken | None = None,
-    **reasoner_kwargs: Any,
 ) -> MetricReport:
     """Load once and score rank-1 mean incoherence with batched blame semantics."""
     committed, invalid_dropped = _validated_pairs(
         load_committed_top1(ranked_path), ranked_path, skip_invalid=skip_invalid
     )
-    rsnr = load_reasoner(backend, robot_jar=robot_jar, **reasoner_kwargs)
-    views = _coerce_for_shared_backend(
-        rsnr,
+    rsnr = load_reasoner()
+    source, target = _coerce_ontology_pair(
         src_owl,
         tgt_owl,
         source_document_iri=source_document_iri,
@@ -586,8 +493,6 @@ def score_local_coherence_files(
         resolver=resolver,
         cancellation_token=cancellation_token,
     )
-    shared = views is not None
-    source, target = views if views is not None else (src_owl, tgt_owl)
     metrics = _local_report(
         rsnr,
         committed,
@@ -595,7 +500,6 @@ def score_local_coherence_files(
         target,
         reasoner=reasoner,
         timeout_s=timeout_s,
-        shared_views=shared,
         invalid_dropped_count=invalid_dropped,
         api_options={"metric": "local", "skip_invalid": skip_invalid},
     )

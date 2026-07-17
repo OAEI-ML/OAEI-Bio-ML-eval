@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -55,10 +54,6 @@ def compare_case(
 
 
 def capture(*, reasoner: str, timeout_s: float | None) -> dict[str, Any]:
-    if os.environ.get("OAEI_COHERENCE_BACKEND") not in {None, "", "native"}:
-        raise RuntimeError(
-            "unset OAEI_COHERENCE_BACKEND: fixture comparison permits only native adapters"
-        )
     import pyowl_core
 
     baseline = json.loads(BASELINE.read_text(encoding="utf-8"))

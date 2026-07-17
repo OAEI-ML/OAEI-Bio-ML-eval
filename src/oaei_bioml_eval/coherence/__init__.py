@@ -20,6 +20,7 @@ does not touch the frozen typed/ API.
 """
 from __future__ import annotations
 
+from .bridge import SnapshotCompatibilityError
 from .metrics import (
     aggregate_across_tasks,
     _COUNT_METRICS_COHERENCE,
@@ -38,9 +39,8 @@ from .native_reasoners import (
     NativeReasonerUnavailableError,
     NativeWorkerError,
 )
-from .reasoner import CoherenceReasoner, MergedOntology, UnsatResult, load_reasoner
+from .reasoner import CoherenceReasoner, UnsatResult, load_reasoner
 from .report import (
-    SnapshotCompatibilityError,
     score_global_coherence,
     score_global_coherence_files,
     score_local_coherence,
@@ -57,7 +57,6 @@ __all__ = [
     "ELKTimeoutError",
     "HermiTReasoner",
     "HermiTTimeoutError",
-    "MergedOntology",
     "UnsatResult",
     "_COUNT_METRICS_COHERENCE",
     "global_coherence_ratio",

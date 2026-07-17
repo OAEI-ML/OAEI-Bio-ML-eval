@@ -505,8 +505,6 @@ class TestWireWorker(unittest.TestCase):
 
 
 class _RecordingAdapter(CoherenceReasoner):
-    accepts_ontology_views = True
-
     def __init__(self, *, result=None, error=None) -> None:
         self.result = result
         self.error = error

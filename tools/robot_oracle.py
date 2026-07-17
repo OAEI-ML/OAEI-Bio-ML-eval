@@ -6,10 +6,16 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import re
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -22,11 +28,179 @@ from oaei_bioml_eval.coherence.bridge import (  # noqa: E402
     Correspondence,
     normalize_correspondences,
 )
-from oaei_bioml_eval.coherence.reasoner import MergedOntology, RobotReasoner  # noqa: E402
-
 BASELINE = ROOT / "tests" / "baselines" / "robot-1.9.10.json"
 FIXTURES = ROOT / "tests" / "fixtures" / "coherence-oracle"
 IRI = "http://ex.org/"
+OWL_THING = "http://www.w3.org/2002/07/owl#Thing"
+OWL_NOTHING = "http://www.w3.org/2002/07/owl#Nothing"
+_TRIVIAL = frozenset({OWL_THING, OWL_NOTHING})
+_TERMINATE_GRACE_SECONDS = 10.0
+_CLASS_SIGNATURE_SPARQL = (
+    "PREFIX owl: <http://www.w3.org/2002/07/owl#>\n"
+    "SELECT ?c WHERE { ?c a owl:Class . FILTER(isIRI(?c)) }\n"
+)
+_UNSAT_IRI = re.compile(r"unsatisfiable:\s*(\S+)")
+_UNSAT_TOTAL = re.compile(r"There are (\d+) unsatisfiable")
+
+
+@dataclass
+class _MergedOntology:
+    handle: Path
+    workdir: Path
+
+
+@dataclass(frozen=True)
+class _OracleResult:
+    unsatisfiable: tuple[str, ...]
+
+
+def _read_iri_column(path: Path) -> set[str]:
+    iris: set[str] = set()
+    with path.open(encoding="utf-8") as handle:
+        next(handle, None)
+        for line in handle:
+            iri = line.strip()
+            if iri.startswith("<") and iri.endswith(">"):
+                iri = iri[1:-1]
+            if iri:
+                iris.add(iri)
+    return iris
+
+
+def _parse_unsatisfiable(log: str) -> set[str]:
+    listed = {match.group(1) for match in _UNSAT_IRI.finditer(log)}
+    total = _UNSAT_TOTAL.search(log)
+    if total is None and not listed:
+        raise RuntimeError(
+            "ROBOT reason exited non-zero without an unsatisfiable-class report:\n"
+            + log[-2000:]
+        )
+    if total is not None and int(total.group(1)) != len(listed):
+        raise RuntimeError(
+            f"ROBOT reason reported {total.group(1)} unsatisfiable classes but "
+            f"logged {len(listed)}"
+        )
+    return listed - _TRIVIAL
+
+
+def _kill_group(process: subprocess.Popen[bytes]) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=_TERMINATE_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+class _RobotOracleRuntime:
+    """Repository-only ROBOT runtime; never imported by the package or CI."""
+
+    def __init__(
+        self,
+        *,
+        robot_jar: str | Path | None = None,
+        java: str | None = None,
+        heap: str | None = None,
+        robot_cmd: list[str] | None = None,
+    ) -> None:
+        jar = robot_jar or os.environ.get("ROBOT_JAR")
+        self._robot_jar = Path(jar) if jar else None
+        self._java = java or os.environ.get("JAVA") or "java"
+        self._heap = heap
+        self._explicit = list(robot_cmd) if robot_cmd else None
+
+    def _base_cmd(self) -> list[str]:
+        if self._explicit:
+            return list(self._explicit)
+        on_path = shutil.which("robot")
+        if on_path:
+            return [on_path]
+        if self._robot_jar and self._robot_jar.exists():
+            heap = [f"-Xmx{self._heap}"] if self._heap else []
+            return [self._java, *heap, "-jar", str(self._robot_jar)]
+        raise FileNotFoundError("ROBOT not found for the manual oracle")
+
+    def _env(self) -> dict[str, str]:
+        environment = dict(os.environ)
+        if self._heap:
+            environment["ROBOT_JAVA_ARGS"] = f"-Xmx{self._heap}"
+        return environment
+
+    def named_classes(self, merged: _MergedOntology) -> tuple[str, ...]:
+        query = merged.workdir / "classes.rq"
+        query.write_text(_CLASS_SIGNATURE_SPARQL, encoding="utf-8")
+        output = merged.workdir / "classes.tsv"
+        code, log = self._run(
+            [
+                *self._base_cmd(),
+                "query",
+                "--input",
+                str(merged.handle),
+                "--query",
+                str(query),
+                str(output),
+            ],
+            timeout_s=None,
+            label="query:classes",
+        )
+        if code != 0:
+            raise RuntimeError(
+                f"ROBOT class-signature query failed (exit {code}):\n{log[-2000:]}"
+            )
+        return tuple(sorted(_read_iri_column(output) - _TRIVIAL))
+
+    def unsatisfiable_classes(
+        self,
+        merged: _MergedOntology,
+        *,
+        which: str,
+        timeout_s: float | None,
+    ) -> _OracleResult:
+        if which not in {"hermit", "elk"}:
+            raise ValueError(f"unknown oracle reasoner: {which!r}")
+        code, log = self._run(
+            [
+                *self._base_cmd(),
+                "reason",
+                "--reasoner",
+                which,
+                "--input",
+                str(merged.handle),
+            ],
+            timeout_s=timeout_s,
+            label=f"reason:{which}",
+        )
+        unsatisfiable = () if code == 0 else tuple(sorted(_parse_unsatisfiable(log)))
+        return _OracleResult(unsatisfiable)
+
+    def dispose(self, merged: _MergedOntology) -> None:
+        shutil.rmtree(merged.workdir, ignore_errors=True)
+
+    def _run(
+        self, command: list[str], *, timeout_s: float | None, label: str
+    ) -> tuple[int, str]:
+        started = time.perf_counter()
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            env=self._env(),
+        )
+        try:
+            output, _ = process.communicate(timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            _kill_group(process)
+            elapsed = time.perf_counter() - started
+            raise TimeoutError(
+                f"ROBOT oracle {label} exceeded {timeout_s}s after {elapsed:.3f}s"
+            ) from None
+        return process.returncode, (output or b"").decode("utf-8", "replace")
 
 
 def _write_bridge(path: Path, pairs: Iterable[object]) -> None:
@@ -47,7 +221,7 @@ def _write_bridge(path: Path, pairs: Iterable[object]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-class OracleRobotReasoner(RobotReasoner):
+class OracleRobotReasoner(_RobotOracleRuntime):
     """Repository-only legacy merge kept outside the installable package."""
 
     def merge(
@@ -55,7 +229,7 @@ class OracleRobotReasoner(RobotReasoner):
         src_owl: Path,
         tgt_owl: Path,
         pairs: Iterable[object],
-    ) -> MergedOntology:
+    ) -> _MergedOntology:
         workdir = Path(tempfile.mkdtemp(prefix="coh-robot-oracle-"))
         bridge = workdir / "bridge.ofn"
         merged = workdir / "merged.ttl"
@@ -77,9 +251,9 @@ class OracleRobotReasoner(RobotReasoner):
             label="oracle:merge",
         )
         if code != 0:
-            self.dispose(MergedOntology(merged, workdir))
+            self.dispose(_MergedOntology(merged, workdir))
             raise RuntimeError(f"ROBOT oracle merge failed (exit {code}):\n{log[-2000:]}")
-        return MergedOntology(merged, workdir)
+        return _MergedOntology(merged, workdir)
 
 CASES: dict[str, tuple[str, str, tuple[tuple[str, ...], ...]]] = {
     "equivalence_clash": (

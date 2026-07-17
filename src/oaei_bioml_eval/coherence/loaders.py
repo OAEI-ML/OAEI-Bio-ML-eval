@@ -2,7 +2,7 @@
 oaei_bioml_eval.coherence.loaders: read the inputs the coherence orchestrator needs.
 
 The global `=` set is reused verbatim from the equivalence loader (OAEI RDF or
-DeepOnto TSV -> `(src, tgt)` pairs; rdflib behind the `[rdf]` extra). The local
+alignment TSV -> `(src, tgt)` pairs; rdflib behind the `[rdf]` extra). The local
 committed mapping is each query's RANK-1 target from the matcher's own
 `local.test.ranked.tsv` — the matcher's committed decision, NOT the gold — in the
 `SrcEntity, TgtCandidates` list form the baselines runner writes (ranked IRI pool).

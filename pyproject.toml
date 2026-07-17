@@ -12,21 +12,15 @@ requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 # Kept deliberately light so participants can self-score with a small install.
 # The typed-ranking metrics (Track 2) and the structural-coherence proxy are
-# dependency-free; the equivalence half (Track 1) adds DeepOnto when it lands.
+# dependency-free; native reasoners remain an explicit optional installation.
 dependencies = []
 
 [project.optional-dependencies]
 # Track 1 global submissions may arrive as OAEI Alignment RDF; rdflib parses them.
-# (The metric core + the DeepOnto-TSV path stay dependency-free.)
+# (The metric core + the alignment-TSV path stay dependency-free.)
 rdf = ["rdflib>=7.0"]
-# the official reasoner-based coherence, DEFAULT ROBOT backend: rdflib
-# parses ROBOT's merged/unsat OWL output; ROBOT itself is an external Java tool located
-# via PATH/$ROBOT_JAR (NOT pip — keeps JVM/torch out of eval's deps). pin ROBOT v1.9.10
-# for released numbers (unsat counts are reasoner-version-dependent).
-reasoner = ["rdflib>=7.0"]
-# the OPTIONAL in-process warm-JVM coherence fast-path + the equivalence
-# half's DeepOnto-TSV path. exploratory only — older HermiT/ELK than ROBOT.
-deeponto = ["deeponto", "rdflib>=7.0"]
+# O5 replaces this placeholder with compatible native-stack dependency ranges.
+reasoner = []
 
 [project.scripts]
 # self-score a Track 2 typed submission from the shell (see typed/cli.py)

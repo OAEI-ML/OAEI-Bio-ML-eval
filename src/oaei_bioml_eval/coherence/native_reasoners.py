@@ -3,8 +3,7 @@
 The sibling reasoner facades are imported only when classification is requested.
 This keeps the dependency-free metric surface importable while using only the
 released public facades of the sibling reasoner distributions.  An absent or
-incompatible facade fails explicitly instead of substituting a private reasoner
-or a Java implementation.
+incompatible facade fails explicitly instead of substituting a private reasoner.
 """
 
 from __future__ import annotations
@@ -121,8 +120,6 @@ class HermiTReasoner(CoherenceReasoner):
     """DL adapter for the frozen pyHermiT ``Reasoner`` public facade."""
 
     name = "hermit"
-    accepts_ontology_views = True
-
     def unsatisfiable_classes_view(
         self,
         ontology: object,
@@ -197,8 +194,6 @@ class ELKReasoner(CoherenceReasoner):
     """OWL 2 EL adapter; bounded calls cross a verified core-wire worker."""
 
     name = "elk"
-    accepts_ontology_views = True
-
     def unsatisfiable_classes_view(
         self,
         ontology: object,
@@ -270,8 +265,6 @@ class NativeReasoner(CoherenceReasoner):
     """Small native dispatcher retaining two independently testable adapters."""
 
     name = "native"
-    accepts_ontology_views = True
-
     def __init__(
         self,
         *,

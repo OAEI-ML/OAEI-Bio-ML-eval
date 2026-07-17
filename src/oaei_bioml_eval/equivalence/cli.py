@@ -29,7 +29,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="subtask", required=True)
 
     p_global = sub.add_parser("global", help="global alignment -> Precision/Recall/F1 (standard + `?`-flagged *_coherent)")
-    p_global.add_argument("submission", help="alignment RDF or DeepOnto TSV")
+    p_global.add_argument("submission", help="alignment RDF or TSV")
     p_global.add_argument("reference", help="the complete reference (TSV, or RDF whose `?` cells flag the incoherence-causing mappings")
     p_global.add_argument("--output", dest="output_path", help="write the metric dict here as JSON")
 

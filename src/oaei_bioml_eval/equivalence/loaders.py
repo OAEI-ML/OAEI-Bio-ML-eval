@@ -1,7 +1,7 @@
 """
 oaei_bioml_eval.equivalence.loaders: read Track 1 submissions + gold off disk.
 
-Global alignment comes as OAEI Alignment RDF or a DeepOnto `(SrcEntity, TgtEntity
+Global alignment comes as OAEI Alignment RDF or an alignment `(SrcEntity, TgtEntity
 [, Score])` TSV, both reduced to a set of `(src, tgt)` pairs. Local ranking comes
 as either a per-query `TgtCandidates` list (pre-ranked) or a scored block TSV
 (`SrcEntity, TgtEntity, Score`, `candidate_count` rows/query, positional query
@@ -28,7 +28,7 @@ _FLAGGED_RELATION = "?"   # OAEI LargeBio: an incoherence-causing reference mapp
 
 
 def load_pairs_tsv(path: str | Path) -> set[tuple[str, str]]:
-    """`(SrcEntity, TgtEntity)` pairs from a DeepOnto-style alignment TSV"""
+    """``(SrcEntity, TgtEntity)`` pairs from an alignment TSV."""
     return {(row["SrcEntity"], row["TgtEntity"]) for row in read_tsv(path)}
 
 

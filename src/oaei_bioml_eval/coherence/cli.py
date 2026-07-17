@@ -5,10 +5,9 @@ oaei_bioml_eval.coherence.cli: the organiser-computed coherence command.
     oaei-bioml-coherence-score local        ranked.tsv     src.owl tgt.owl  --reasoner hermit
     oaei-bioml-coherence-score structural   submission.rdf                  (STUB — open rule set)
 
-Reports a degree of INCOHERENCE in [0, 1] (0 = clean, higher = worse). The default
-backend is ROBOT (located on PATH / $ROBOT_JAR; --robot-jar overrides); --backend
-deeponto uses the optional in-process warm-JVM fast-path. Prints the metric dict as
-JSON to stdout (and writes it when --output is set).
+Reports a degree of INCOHERENCE in [0, 1] (0 = clean, higher = worse). Official
+scoring uses the native shared-view reasoner stack. Prints the metric dictionary
+as JSON to stdout (and writes it when ``--output`` is set).
 """
 from __future__ import annotations
 
@@ -21,6 +20,10 @@ from .report import (
     score_global_coherence_files,
     score_local_coherence_files,
     score_structural_proxy_files,
+)
+
+_REMOVED_OPTIONS = frozenset(
+    {"--backend", "--robot-jar", "--java", "--robot-cmd", "--heap"}
 )
 
 
@@ -39,8 +42,6 @@ def _build_parser() -> argparse.ArgumentParser:
         p.add_argument("tgt_owl", help="target ontology OWL")
         p.add_argument("--reasoner", choices=("hermit", "elk"), default="hermit", help="HermiT exact (default) or ELK (`>=`)")
         p.add_argument("--timeout", dest="timeout_s", type=float, default=7200.0, help="HermiT wall-clock gate seconds -> ELK (7200)")
-        p.add_argument("--backend", help="reasoner backend: robot (default) | deeponto | $OAEI_COHERENCE_BACKEND")
-        p.add_argument("--robot-jar", dest="robot_jar", help="ROBOT jar (else `robot` on PATH / $ROBOT_JAR)")
         p.add_argument("--skip-invalid-iris", dest="skip_invalid", action="store_true",
                        help="drop correspondences whose IRIs are malformed (embedded whitespace) instead of erroring")
         p.add_argument("--output", dest="output_path", help="write the metric dict here as JSON")
@@ -51,18 +52,32 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _reject_removed_options(
+    parser: argparse.ArgumentParser, argv: Sequence[str]
+) -> None:
+    for argument in argv:
+        option = argument.split("=", 1)[0]
+        if option in _REMOVED_OPTIONS:
+            parser.error(
+                f"{option} was removed in 0.2.0; use --reasoner hermit or elk"
+            )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
+    parser = _build_parser()
+    arguments = tuple(sys.argv[1:] if argv is None else argv)
+    _reject_removed_options(parser, arguments)
+    args = parser.parse_args(arguments)
     if args.kind == "global":
         metrics = score_global_coherence_files(
             args.submission, args.src_owl, args.tgt_owl, reasoner=args.reasoner,
-            timeout_s=args.timeout_s, backend=args.backend, robot_jar=args.robot_jar,
+            timeout_s=args.timeout_s,
             skip_invalid=args.skip_invalid, output_path=args.output_path
         )
     elif args.kind == "local":
         metrics = score_local_coherence_files(
             args.submission, args.src_owl, args.tgt_owl, reasoner=args.reasoner,
-            timeout_s=args.timeout_s, backend=args.backend, robot_jar=args.robot_jar,
+            timeout_s=args.timeout_s,
             skip_invalid=args.skip_invalid, output_path=args.output_path
         )
     else:
