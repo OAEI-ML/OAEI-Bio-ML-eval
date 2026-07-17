@@ -93,6 +93,30 @@ class TestMetricsCore(unittest.TestCase):
         self.assertNotIn("reasoner_used", macro)                 # annotations dropped
         self.assertNotIn("lower_bound", macro)
 
+    def test_micro_recomputes_global_and_weights_local(self):
+        per_task = {
+            "small": {
+                "global_coherence": 1.0,
+                "unsatisfiable_count": 1,
+                "union_class_count": 1,
+                "local_coherence": 1.0,
+                "local_coherence_queries": 1,
+            },
+            "large": {
+                "global_coherence": 0.0,
+                "unsatisfiable_count": 0,
+                "union_class_count": 9,
+                "local_coherence": 0.0,
+                "local_coherence_queries": 9,
+            },
+        }
+        macro = metrics.aggregate_across_tasks(per_task, average="macro")
+        micro = metrics.aggregate_across_tasks(per_task, average="micro")
+        self.assertEqual(macro["global_coherence"], 0.5)
+        self.assertEqual(micro["global_coherence"], 0.1)
+        self.assertEqual(micro["local_coherence"], 0.1)
+        self.assertEqual(micro["union_class_count"], 10.0)
+
     def test_count_keys_disjoint_from_equivalence(self):
         # the two subtasks share a metrics.json; a colliding count key would mis-sum in macro
         self.assertTrue(metrics._COUNT_METRICS_COHERENCE.isdisjoint(_EQUIV_COUNTS))

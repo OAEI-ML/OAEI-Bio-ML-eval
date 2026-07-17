@@ -286,6 +286,46 @@ class TestMacro(unittest.TestCase):
         self.assertAlmostEqual(macro["f1"], 0.7)
         self.assertEqual(macro["queries"], 30.0)
 
+    def test_selectable_micro_recomputes_from_pooled_counts(self):
+        per_task = {
+            "small": {
+                "precision": 1.0,
+                "recall": 1.0,
+                "f1": 1.0,
+                "predicted": 1.0,
+                "reference": 1.0,
+                "true_positive": 1.0,
+            },
+            "large": {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0,
+                "predicted": 9.0,
+                "reference": 9.0,
+                "true_positive": 0.0,
+            },
+        }
+        macro = metrics.aggregate_across_tasks(per_task, average="macro")
+        micro = metrics.aggregate_across_tasks(per_task, average="micro")
+        self.assertEqual(macro["f1"], 0.5)
+        self.assertAlmostEqual(micro["precision"], 0.1)
+        self.assertAlmostEqual(micro["recall"], 0.1)
+        self.assertAlmostEqual(micro["f1"], 0.1)
+        self.assertEqual(micro["reference"], 10.0)
+
+    def test_micro_weights_local_rates_by_queries(self):
+        micro = metrics.micro_average_across_tasks({
+            "small": {"mrr": 1.0, "hits_at_1": 1.0, "queries": 1.0},
+            "large": {"mrr": 0.0, "hits_at_1": 0.0, "queries": 9.0},
+        })
+        self.assertAlmostEqual(micro["mrr"], 0.1)
+        self.assertAlmostEqual(micro["hits_at_1"], 0.1)
+        self.assertEqual(micro["queries"], 10.0)
+
+    def test_unknown_average_rejected(self):
+        with self.assertRaises(ValueError):
+            metrics.aggregate_across_tasks({}, average="weighted")
+
 
 if __name__ == "__main__":
     unittest.main()

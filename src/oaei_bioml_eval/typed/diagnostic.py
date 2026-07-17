@@ -87,6 +87,7 @@ def score_entity_only_metrics(
         "entity_only_hits_at_1": mean(hits_at_1) if contributing else 0.0,
         "entity_only_hits_at_5": mean(hits_at_5) if contributing else 0.0,
         "entity_only_hits_at_10": mean(hits_at_10) if contributing else 0.0,
+        "entity_only_queries": float(contributing),
     }
 
 
@@ -166,7 +167,11 @@ def score_relation_on_preferred_entity_metrics(
     result: dict[str, float] = {
         "relation_accuracy_on_preferred_entity": accuracy,
         "relation_macro_f1_on_preferred_entity": macro_f1,
+        "relation_preferred_entity_queries": float(contributing),
     }
     for relation, f1 in per_relation_f1.items():
         result[f"relation_f1_on_preferred_entity_{relation}"] = f1
+        result[f"relation_tp_on_preferred_entity_{relation}"] = float(tp[relation])
+        result[f"relation_fp_on_preferred_entity_{relation}"] = float(fp[relation])
+        result[f"relation_fn_on_preferred_entity_{relation}"] = float(fn[relation])
     return result

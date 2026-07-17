@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from ..aggregation import AverageMode, validate_average, weighted_mean
+
 
 _QUANTIZE = 12  # dp; parity with equivalence/ + typed/ (canonical, BLAS-noise-stable)
 
@@ -77,3 +79,71 @@ def macro_average_across_tasks(per_task: dict[str, dict[str, float]]) -> dict[st
             continue
         out[key] = float(sum(numeric)) if key in _COUNT_METRICS_COHERENCE else sum(numeric) / len(numeric)
     return out
+
+
+def micro_average_across_tasks(per_task: dict[str, dict[str, float]]) -> dict[str, float]:
+    """Pool class/query counts and recompute cross-task incoherence degrees."""
+    out: dict[str, float] = {}
+    for key in sorted(_COUNT_METRICS_COHERENCE):
+        if any(key in task for task in per_task.values()):
+            out[key] = float(sum(task.get(key, 0.0) for task in per_task.values()))
+
+    handled_rates: set[str] = set()
+    if any("global_coherence" in task for task in per_task.values()):
+        out["global_coherence"] = global_coherence_ratio(
+            int(out.get("unsatisfiable_count", 0.0)),
+            int(out.get("union_class_count", 0.0)),
+        )
+        handled_rates.add("global_coherence")
+
+    denominator_by_rate = {
+        "local_coherence": "local_coherence_queries",
+        "structural_coherence_proxy": "structural_coherence_proxy_count",
+    }
+    for rate, denominator in denominator_by_rate.items():
+        if not any(rate in task for task in per_task.values()):
+            continue
+        weighted = [
+            (float(task[rate]), float(task[denominator]))
+            for task in per_task.values()
+            if rate in task and denominator in task
+        ]
+        present = sum(rate in task for task in per_task.values())
+        if len(weighted) != present:
+            raise ValueError(
+                f"cannot micro-average {rate!r}: a contributing task has no "
+                f"{denominator!r} denominator"
+            )
+        out[rate] = round(weighted_mean(weighted), _QUANTIZE)
+        handled_rates.add(rate)
+
+    unsupported = sorted(
+        {
+            key
+            for task in per_task.values()
+            for key, value in task.items()
+            if key not in _COUNT_METRICS_COHERENCE
+            and key not in _ANNOTATION_KEYS
+            and key not in handled_rates
+            and isinstance(value, (int, float))
+            and not isinstance(value, bool)
+        }
+    )
+    if unsupported:
+        raise ValueError(
+            "cannot micro-average metrics without registered denominators: "
+            + ", ".join(unsupported)
+        )
+    return out
+
+
+def aggregate_across_tasks(
+    per_task: dict[str, dict[str, float]],
+    *,
+    average: AverageMode = "macro",
+) -> dict[str, float]:
+    """Aggregate using equal-task macro or pooled-observation micro semantics."""
+    mode = validate_average(average)
+    if mode == "micro":
+        return micro_average_across_tasks(per_task)
+    return macro_average_across_tasks(per_task)

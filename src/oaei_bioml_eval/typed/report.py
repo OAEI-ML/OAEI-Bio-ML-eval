@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
+from ..aggregation import AverageMode, validate_average, weighted_mean
 from ..hierarchy import HierarchyIndex
 from ..io import read_tsv, write_json
 from .loaders import (
@@ -35,7 +36,19 @@ _COUNT_METRICS = frozenset({
     "hierarchy_aware_typed_ndcg_at_10_queries",
     "hierarchy_aware_typed_ndcg_at_10__equivalence_only_queries",
     "hierarchy_aware_typed_ndcg_at_10__subsumption_only_queries",
+    "entity_only_queries",
+    "relation_preferred_entity_queries",
 })
+
+
+def _is_count_metric(key: str) -> bool:
+    return key in _COUNT_METRICS or key.startswith(
+        (
+            "relation_tp_on_preferred_entity_",
+            "relation_fp_on_preferred_entity_",
+            "relation_fn_on_preferred_entity_",
+        )
+    )
 
 
 def _group_by_baseline(
@@ -77,7 +90,7 @@ def macro_average_across_tasks(
             values = [m[key] for m in task_metrics_list if key in m]
             if not values:
                 continue
-            if key in _COUNT_METRICS:
+            if _is_count_metric(key):
                 total = float(sum(values))
                 row[f"{key}_sum"] = total
                 row[f"{key}_mean"] = total / len(values)
@@ -88,6 +101,138 @@ def macro_average_across_tasks(
         aggregated[baseline_name] = row
 
     return aggregated
+
+
+def _typed_rate_denominator(key: str) -> str | None:
+    if key.startswith("hierarchy_aware_typed_ndcg_at_10__equivalence_only"):
+        return "hierarchy_aware_typed_ndcg_at_10__equivalence_only_queries"
+    if key.startswith("hierarchy_aware_typed_ndcg_at_10__subsumption_only"):
+        return "hierarchy_aware_typed_ndcg_at_10__subsumption_only_queries"
+    if key.startswith("hierarchy_aware_typed_ndcg_at_10"):
+        return "hierarchy_aware_typed_ndcg_at_10_queries"
+    if key.startswith("preferred_typed_") and key.endswith("__equivalence_only"):
+        return "preferred_pair_queries__equivalence_only"
+    if key.startswith("preferred_typed_") and key.endswith("__subsumption_only"):
+        return "preferred_pair_queries__subsumption_only"
+    if key.startswith("preferred_typed_"):
+        return "preferred_pair_queries"
+    if key.startswith("entity_only_"):
+        return "entity_only_queries"
+    if key == "relation_accuracy_on_preferred_entity":
+        return "relation_preferred_entity_queries"
+    return None
+
+
+def _relation_names(metrics_list: list[dict[str, float]]) -> set[str]:
+    prefix = "relation_tp_on_preferred_entity_"
+    return {
+        key.removeprefix(prefix)
+        for metrics in metrics_list
+        for key in metrics
+        if key.startswith(prefix)
+    }
+
+
+def _add_count_totals(
+    row: dict[str, float], metrics_list: list[dict[str, float]]
+) -> None:
+    keys = sorted(
+        {
+            key
+            for metrics in metrics_list
+            for key in metrics
+            if _is_count_metric(key)
+        }
+    )
+    for key in keys:
+        values = [metrics[key] for metrics in metrics_list if key in metrics]
+        total = float(sum(values))
+        row[key] = total
+        row[f"{key}_sum"] = total
+        row[f"{key}_mean"] = total / len(values)
+
+
+def micro_average_across_tasks(
+    per_task_results: dict[str, dict[str, float]], separator: str = "/"
+) -> dict[str, dict[str, float]]:
+    """Pool query observations for each baseline.
+
+    Mean-based ranking metrics are weighted by their exact contributing-query
+    count. Relation F1 is recomputed from pooled TP/FP/FN counts. Per-task median
+    ranks are intentionally omitted because a pooled median cannot be recovered
+    from medians alone.
+    """
+    grouped = _group_by_baseline(per_task_results, separator)
+    aggregated: dict[str, dict[str, float]] = {}
+    non_composable = {
+        "median_preferred_typed_rank",
+        "median_preferred_typed_rank__equivalence_only",
+        "median_preferred_typed_rank__subsumption_only",
+        "relation_macro_f1_on_preferred_entity",
+    }
+
+    for baseline_name, metrics_list in sorted(grouped.items()):
+        row: dict[str, float] = {}
+        _add_count_totals(row, metrics_list)
+        all_keys = sorted({key for metrics in metrics_list for key in metrics})
+        for key in all_keys:
+            if _is_count_metric(key) or key in non_composable:
+                continue
+            if key.startswith("relation_f1_on_preferred_entity_"):
+                continue
+            denominator = _typed_rate_denominator(key)
+            if denominator is None:
+                raise ValueError(
+                    f"cannot micro-average {key!r}: no contributing-query "
+                    "denominator is registered"
+                )
+            weighted = [
+                (metrics[key], metrics[denominator])
+                for metrics in metrics_list
+                if key in metrics and denominator in metrics
+            ]
+            present = sum(key in metrics for metrics in metrics_list)
+            if len(weighted) != present:
+                raise ValueError(
+                    f"cannot micro-average {key!r}: a contributing task has no "
+                    f"{denominator!r} denominator"
+                )
+            row[key] = weighted_mean(weighted)
+
+        relation_f1s: list[float] = []
+        for relation in sorted(_relation_names(metrics_list)):
+            tp = row.get(f"relation_tp_on_preferred_entity_{relation}", 0.0)
+            fp = row.get(f"relation_fp_on_preferred_entity_{relation}", 0.0)
+            fn = row.get(f"relation_fn_on_preferred_entity_{relation}", 0.0)
+            precision = tp / (tp + fp) if tp + fp else 0.0
+            recall = tp / (tp + fn) if tp + fn else 0.0
+            f1 = (
+                2.0 * precision * recall / (precision + recall)
+                if precision + recall
+                else 0.0
+            )
+            row[f"relation_f1_on_preferred_entity_{relation}"] = f1
+            relation_f1s.append(f1)
+        if relation_f1s:
+            row["relation_macro_f1_on_preferred_entity"] = sum(
+                relation_f1s
+            ) / len(relation_f1s)
+        row["tasks"] = float(len(metrics_list))
+        aggregated[baseline_name] = row
+    return aggregated
+
+
+def aggregate_across_tasks(
+    per_task_results: dict[str, dict[str, float]],
+    *,
+    average: AverageMode = "macro",
+    separator: str = "/",
+) -> dict[str, dict[str, float]]:
+    """Aggregate per-task rows with selectable macro or micro semantics."""
+    mode = validate_average(average)
+    if mode == "micro":
+        return micro_average_across_tasks(per_task_results, separator)
+    return macro_average_across_tasks(per_task_results, separator)
 
 
 def score_files(

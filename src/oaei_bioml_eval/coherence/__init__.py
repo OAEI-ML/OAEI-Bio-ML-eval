@@ -22,10 +22,12 @@ the frozen typed/ API.
 from __future__ import annotations
 
 from .metrics import (
+    aggregate_across_tasks,
     _COUNT_METRICS_COHERENCE,
     global_coherence_ratio,
     local_coherence_aggregate,
     macro_average_across_tasks,
+    micro_average_across_tasks,
 )
 from .reasoner import CoherenceReasoner, MergedOntology, UnsatResult, load_reasoner
 from .report import (
@@ -35,6 +37,7 @@ from .report import (
 )
 
 __all__ = [
+    "aggregate_across_tasks",
     "CoherenceReasoner",
     "MergedOntology",
     "UnsatResult",
@@ -43,6 +46,7 @@ __all__ = [
     "load_reasoner",
     "local_coherence_aggregate",
     "macro_average_across_tasks",
+    "micro_average_across_tasks",
     "score_global_coherence_files",
     "score_local_coherence_files",
     "score_structural_proxy_files",

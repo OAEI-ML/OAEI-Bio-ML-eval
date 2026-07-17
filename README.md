@@ -31,6 +31,13 @@ The migration deliberately separates two concerns:
 OAEI-Bio-ML-eval remains BioML-owned so tracks can evolve independently. It must not depend on
 Exact-OM; both may share the lower-level OWL core and reasoner packages.
 
+## Cross-task averaging
+
+The metric families expose an explicit `aggregate_across_tasks(..., average=...)` choice.
+Use `average="micro"` for Conference-style pooled evaluation and `average="macro"` for the
+equal-task weighting used by Bio-ML and other multi-dataset reports. Micro aggregation recomputes
+metrics from counts/query denominators; it does not average already-computed percentages.
+
 ## Packaging
 
 The package uses PEP 621 and hatchling and is consumable with uv, Poetry, and pip. The base

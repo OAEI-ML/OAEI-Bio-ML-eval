@@ -35,9 +35,15 @@ from .relevance import (
     compute_graded_relevance,
     select_preferred_pairs,
 )
-from .report import macro_average_across_tasks, score_files
+from .report import (
+    aggregate_across_tasks,
+    macro_average_across_tasks,
+    micro_average_across_tasks,
+    score_files,
+)
 
 __all__ = [
+    "aggregate_across_tasks",
     "DEFAULT_MAX_DISTANCE",
     "DEFAULT_RELATIONS",
     "compute_graded_relevance",
@@ -49,6 +55,7 @@ __all__ = [
     "load_per_query_candidate_sets_from_answers",
     "load_preferred_pairs",
     "macro_average_across_tasks",
+    "micro_average_across_tasks",
     "score_entity_only_metrics",
     "score_files",
     "score_preferred_typed_metrics",

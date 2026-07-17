@@ -107,6 +107,26 @@ class TestMacroAverageAcrossTasks(unittest.TestCase):
         agg = report.macro_average_across_tasks({"no_separator": {"x": 1.0}})
         self.assertEqual(agg, {})
 
+    def test_selectable_micro_weights_by_contributing_queries(self):
+        results = {
+            "small/lex": {
+                "preferred_typed_mrr": 1.0,
+                "preferred_pair_queries": 1.0,
+                "queries": 1.0,
+            },
+            "large/lex": {
+                "preferred_typed_mrr": 0.0,
+                "preferred_pair_queries": 9.0,
+                "queries": 9.0,
+            },
+        }
+        macro = report.aggregate_across_tasks(results, average="macro")["lex"]
+        micro = report.aggregate_across_tasks(results, average="micro")["lex"]
+        self.assertEqual(macro["preferred_typed_mrr"], 0.5)
+        self.assertEqual(micro["preferred_typed_mrr"], 0.1)
+        self.assertEqual(micro["queries"], 10.0)
+        self.assertEqual(micro["tasks"], 2.0)
+
 
 class TestPrecisionEndToEnd(unittest.TestCase):
     def test_sub_6dp_gap_decides_rank_one(self):

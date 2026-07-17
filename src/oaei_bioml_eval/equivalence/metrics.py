@@ -18,6 +18,8 @@ from __future__ import annotations
 from collections.abc import Hashable, Sequence
 from statistics import mean as _mean
 
+from ..aggregation import AverageMode, validate_average, weighted_mean
+
 
 _QUANTIZE = 12  # dp; BLAS-noise-stable sort, parity with typed/
 DEFAULT_HITS_KS: tuple[int, ...] = (1, 5, 10)
@@ -148,3 +150,91 @@ def macro_average_across_tasks(per_task: dict[str, dict[str, float]]) -> dict[st
         values = [metrics[key] for metrics in per_task.values() if key in metrics]
         out[key] = float(sum(values)) if key in _COUNT_METRICS else _safe_mean(values)
     return out
+
+
+def micro_average_across_tasks(per_task: dict[str, dict[str, float]]) -> dict[str, float]:
+    """Pool task sufficient statistics and recompute Conference-style metrics.
+
+    Global precision/recall/F1 are recomputed from summed correspondence counts.
+    Local MRR/Hits rates are weighted by their query counts. This is deliberately
+    different from a macro mean when tasks have different sizes.
+    """
+    out: dict[str, float] = {
+        key: float(
+            sum(metrics.get(key, 0.0) for metrics in per_task.values())
+        )
+        for key in sorted(_COUNT_METRICS)
+        if any(key in metrics for metrics in per_task.values())
+    }
+
+    handled_rates: set[str] = set()
+    if any("true_positive" in metrics for metrics in per_task.values()):
+        true_positive = out.get("true_positive", 0.0)
+        predicted = out.get("predicted", 0.0)
+        reference = out.get("reference", 0.0)
+        precision = true_positive / predicted if predicted else 0.0
+        recall = true_positive / reference if reference else 0.0
+        out.update(
+            precision=precision,
+            recall=recall,
+            f1=(
+                2.0 * precision * recall / (precision + recall)
+                if precision + recall
+                else 0.0
+            ),
+        )
+        handled_rates.update(("precision", "recall", "f1"))
+
+    if any("true_positive_coherent" in metrics for metrics in per_task.values()):
+        true_positive = out.get("true_positive_coherent", 0.0)
+        scored = out.get("predicted", 0.0) - out.get("predicted_flagged", 0.0)
+        positive = out.get("reference_positive", 0.0)
+        precision = true_positive / scored if scored else 0.0
+        recall = true_positive / positive if positive else 0.0
+        out.update(
+            precision_coherent=precision,
+            recall_coherent=recall,
+            f1_coherent=(
+                2.0 * precision * recall / (precision + recall)
+                if precision + recall
+                else 0.0
+            ),
+        )
+        handled_rates.update(
+            ("precision_coherent", "recall_coherent", "f1_coherent")
+        )
+
+    rate_keys = sorted(
+        {
+            key
+            for metrics in per_task.values()
+            for key in metrics
+            if key not in _COUNT_METRICS and key not in handled_rates
+        }
+    )
+    for key in rate_keys:
+        weighted = [
+            (metrics[key], metrics["queries"])
+            for metrics in per_task.values()
+            if key in metrics and "queries" in metrics
+        ]
+        present = sum(key in metrics for metrics in per_task.values())
+        if len(weighted) != present:
+            raise ValueError(
+                f"cannot micro-average {key!r}: a contributing task has no "
+                "query-count denominator"
+            )
+        out[key] = weighted_mean(weighted)
+    return out
+
+
+def aggregate_across_tasks(
+    per_task: dict[str, dict[str, float]],
+    *,
+    average: AverageMode = "macro",
+) -> dict[str, float]:
+    """Aggregate using equal-task macro or pooled-observation micro semantics."""
+    mode = validate_average(average)
+    if mode == "micro":
+        return micro_average_across_tasks(per_task)
+    return macro_average_across_tasks(per_task)
