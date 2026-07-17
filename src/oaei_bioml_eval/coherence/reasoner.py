@@ -63,12 +63,35 @@ class MergedOntology:
 
 class CoherenceReasoner(ABC):
     name: str = "base"
+    # O1 transition marker.  The legacy ROBOT/DeepOnto differential oracles keep
+    # their file-only ``merge`` implementation; native adapters opt into the
+    # identity-preserving view handoff through ``merge_views``.  O2 removes both
+    # merge methods in favour of the shared core composite.
+    accepts_ontology_views: bool = False
 
     @abstractmethod
-    def merge(self, src_owl: Path, tgt_owl: Path, pairs: Iterable) -> MergedOntology:
+    def merge(
+        self, src_owl: Path, tgt_owl: Path, pairs: Iterable[object]
+    ) -> MergedOntology:
         """both OWLs + a bridge of one axiom per correspondence (named, IRIs sorted): `=` ->
         EquivalentClasses(src, tgt), `<=`/`>=` -> SubClassOf. Items are `(src, tgt)` pairs (-> `=`)
         or `(src, tgt, relation)` triples."""
+
+    def merge_views(
+        self, source: object, target: object, pairs: Iterable[object]
+    ) -> MergedOntology:
+        """Prepare exact shared ontology views for classification.
+
+        This non-abstract O1 seam lets native/stub adapters prove identity handoff
+        before O2 introduces ``pyowl_core.compose_views``.  Legacy Java oracles do
+        not implement it and therefore cannot accidentally consume or reparse a
+        shared view.
+        """
+        del source, target, pairs
+        raise TypeError(
+            f"{type(self).__name__} is a legacy file-only differential oracle; "
+            "snapshot-first coherence requires a shared-view reasoner adapter"
+        )
 
     @abstractmethod
     def named_classes(self, merged: MergedOntology) -> tuple[str, ...]:

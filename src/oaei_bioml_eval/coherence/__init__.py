@@ -31,8 +31,13 @@ from .metrics import (
 )
 from .reasoner import CoherenceReasoner, MergedOntology, UnsatResult, load_reasoner
 from .report import (
+    SnapshotCompatibilityError,
+    score_global_coherence,
     score_global_coherence_files,
+    score_local_coherence,
     score_local_coherence_files,
+    score_reference_coherence,
+    score_reference_coherence_files,
     score_structural_proxy_files,
 )
 
@@ -47,7 +52,12 @@ __all__ = [
     "local_coherence_aggregate",
     "macro_average_across_tasks",
     "micro_average_across_tasks",
+    "SnapshotCompatibilityError",
+    "score_global_coherence",
     "score_global_coherence_files",
+    "score_local_coherence",
     "score_local_coherence_files",
+    "score_reference_coherence",
+    "score_reference_coherence_files",
     "score_structural_proxy_files",
 ]
