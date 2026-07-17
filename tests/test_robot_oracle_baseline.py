@@ -10,6 +10,9 @@ from typing import Any, ClassVar
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "tests" / "baselines" / "robot-1.9.10.json"
+LARGE_EVIDENCE = (
+    ROOT / "tests" / "baselines" / "robot-1.9.10-ncit-doid-train.json"
+)
 FIXTURES = ROOT / "tests" / "fixtures" / "coherence-oracle"
 
 
@@ -50,6 +53,27 @@ class TestRobotOracleBaseline(unittest.TestCase):
         self.assertEqual(
             cases["already_incoherent"]["hermit_unsatisfiable"],
             ["http://ex.org/A"],
+        )
+
+    def test_large_ncit_doid_evidence_records_exact_reasoner_agreement(self) -> None:
+        evidence = json.loads(LARGE_EVIDENCE.read_text(encoding="utf-8"))
+        comparison = evidence["comparison"]
+        hermit = evidence["runs"]["hermit"]
+        elk = evidence["runs"]["elk"]
+
+        self.assertEqual(
+            evidence["schema"], "oaei-bioml-eval.robot-large-evidence/1"
+        )
+        self.assertEqual(evidence["bridge"]["mapping_count"], 1406)
+        self.assertEqual(evidence["inputs"]["named_class_count"], 24227)
+        self.assertTrue(comparison["agreement"])
+        self.assertEqual(comparison["unsatisfiable_count"], 2227)
+        self.assertEqual(hermit["unsatisfiable_count"], elk["unsatisfiable_count"])
+        self.assertEqual(
+            hermit["unsatisfiable_sha256"], elk["unsatisfiable_sha256"]
+        )
+        self.assertEqual(
+            comparison["unsatisfiable_sha256"], hermit["unsatisfiable_sha256"]
         )
 
 

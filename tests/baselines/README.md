@@ -10,6 +10,11 @@ leaderboard semantics.
   1.9.10 release JAR whose SHA-256 appears in the file. Normal tests validate the
   committed JSON and fixture hashes without Java. The manual workflow downloads the
   pinned JAR, verifies its hash, and performs two consecutive oracle runs.
+- `robot-1.9.10-ncit-doid-train.json` records a one-pass, real-scale migration audit
+  over the public NCIT–DOID ontologies and all 1,406 training equivalences. The
+  ontologies remain outside Git; their hashes, result cardinality, result digest, and
+  timings make the evidence identifiable. HermiT and ELK produced the same 2,227
+  unsatisfiable classes. Timings are diagnostic evidence, not release thresholds.
 
 Changes require a semantic explanation. Updating expected output merely to make a
 test pass is not an acceptable review rationale. Oracle tools, JARs, logs, and scratch

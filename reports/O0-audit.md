@@ -15,6 +15,14 @@
 - The public pinned NCIT–DOID corpus is available outside Git. With no alignment
   bridge, ROBOT merged it in 25.20 s, enumerated 24,227 named classes in 26.49 s,
   and found no unsatisfiable class with HermiT (52.75 s) or ELK (24.68 s).
+- With all 1,406 NCIT–DOID training equivalences applied, the merged ontology still
+  contained 24,227 named classes. HermiT found 2,227 unsatisfiable classes in
+  722.34 s; ELK found the identical sorted set in 22.47 s. Both sets have SHA-256
+  `8dd56db2f864e757fb9fe04ca9b4cb6798e161597ff715f81175129db8bc27ab`.
+  The source, target, bridge, tool, result, and timing evidence is frozen in
+  `tests/baselines/robot-1.9.10-ncit-doid-train.json`. This validates semantic
+  agreement on the available EL-profile workload while quantifying why native
+  task-specific dispatch and explicit timeout handling are required.
 
 ## Removal inventory
 

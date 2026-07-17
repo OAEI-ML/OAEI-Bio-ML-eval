@@ -1,0 +1,62 @@
+{
+  "bridge": {
+    "mapping_count": 1406,
+    "relation": "=",
+    "sha256": "9e417056a39996575c4409b4ea89b01dc5cc1f8962c9123975fc6594a3e089b9"
+  },
+  "comparison": {
+    "agreement": true,
+    "class_order": "unicode-codepoint",
+    "elapsed_time_is_contract": false,
+    "owl_nothing_excluded": true,
+    "unsatisfiable_count": 2227,
+    "unsatisfiable_sha256": "8dd56db2f864e757fb9fe04ca9b4cb6798e161597ff715f81175129db8bc27ab"
+  },
+  "first_unsatisfiable": [
+    "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#C101046",
+    "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#C101053",
+    "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#C101054",
+    "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#C101059",
+    "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#C101075",
+    "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#C101083",
+    "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#C101085",
+    "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#C101641",
+    "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#C103817",
+    "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#C105526"
+  ],
+  "inputs": {
+    "named_class_count": 24227,
+    "source": {
+      "line_count": 978244,
+      "name": "NCIT",
+      "sha256": "379a37f47c0c8e7c30397769358cca955140d16b2797a1cc75da4b1fc2b354eb"
+    },
+    "target": {
+      "line_count": 107005,
+      "name": "DOID",
+      "sha256": "76f41cce3616ad1a9ba6353f469e96bde7addba5d43e541651a3ab703f9ba2bc"
+    },
+    "track": "OAEI Bio-ML NCIT-DOID"
+  },
+  "java": "openjdk version \"11.0.31\" 2026-04-21",
+  "robot": {
+    "release": "https://github.com/ontodev/robot/releases/tag/v1.9.10",
+    "sha256": "16a73c074f3df359a7338a84b4e0788785fe06117f931bb9796e9619ea776105",
+    "version": "ROBOT version 1.9.10"
+  },
+  "runs": {
+    "elk": {
+      "elapsed_seconds": 22.46760735596763,
+      "unsatisfiable_count": 2227,
+      "unsatisfiable_sha256": "8dd56db2f864e757fb9fe04ca9b4cb6798e161597ff715f81175129db8bc27ab"
+    },
+    "hermit": {
+      "elapsed_seconds": 722.3426846769871,
+      "unsatisfiable_count": 2227,
+      "unsatisfiable_sha256": "8dd56db2f864e757fb9fe04ca9b4cb6798e161597ff715f81175129db8bc27ab"
+    },
+    "merge_elapsed_seconds_rounded": 20.028,
+    "signature_elapsed_seconds_rounded": 26.343
+  },
+  "schema": "oaei-bioml-eval.robot-large-evidence/1"
+}
