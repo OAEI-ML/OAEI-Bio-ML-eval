@@ -4,9 +4,8 @@ oaei_bioml_eval.equivalence.cli: the `score` command for Track 1.
     oaei-bioml-equivalence-score global submission.rdf reference.tsv
     oaei-bioml-equivalence-score local  ranking.tsv  gold.tsv --candidate-count 50
 
-Note: we can modify the `--candidate-count` flag to be 100 for synchronisation with
-preivous years; or we can continue to tune it specifically for this release (todo: 
-review & revisit).
+`--candidate-count` must match the track's declared scored-block width; the
+default remains 50 for compatibility with existing Bio-ML inputs.
 
 Prints the metric dict as JSON to stdout (and writes it when `--output` is set).
 The global subcommand needs the `[rdf]` extra only when the submission is RDF.
@@ -16,7 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import Sequence
+from collections.abc import Sequence
 
 from .report import score_global_files, score_local_files
 

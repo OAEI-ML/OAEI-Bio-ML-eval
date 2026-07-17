@@ -15,6 +15,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Iterable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -28,6 +29,7 @@ from oaei_bioml_eval.coherence.bridge import (  # noqa: E402
     Correspondence,
     normalize_correspondences,
 )
+
 BASELINE = ROOT / "tests" / "baselines" / "robot-1.9.10.json"
 FIXTURES = ROOT / "tests" / "fixtures" / "coherence-oracle"
 IRI = "http://ex.org/"
@@ -91,10 +93,8 @@ def _kill_group(process: subprocess.Popen[bytes]) -> None:
     try:
         process.wait(timeout=_TERMINATE_GRACE_SECONDS)
     except subprocess.TimeoutExpired:
-        try:
+        with suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
 
 
 class _RobotOracleRuntime:

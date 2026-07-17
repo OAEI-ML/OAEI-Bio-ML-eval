@@ -11,8 +11,8 @@ separate native shared-view surface.
 """
 
 from .metrics import (
-    aggregate_across_tasks,
     DEFAULT_HITS_KS,
+    aggregate_across_tasks,
     global_prf1,
     global_prf1_coherence_aware,
     local_ranking_metrics,
@@ -22,8 +22,8 @@ from .metrics import (
 )
 
 __all__ = [
-    "aggregate_across_tasks",
     "DEFAULT_HITS_KS",
+    "aggregate_across_tasks",
     "global_prf1",
     "global_prf1_coherence_aware",
     "local_ranking_metrics",

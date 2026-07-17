@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import unittest
 
+from _fixtures import FIXTURES, chain_hierarchy
+
 from oaei_bioml_eval.typed import loaders, metrics
 from oaei_bioml_eval.typed.metrics import DEFAULT_RELATIONS
-
-from _fixtures import FIXTURES, chain_hierarchy
 
 # H-nDCG values for the fixture, derived from the hand-traced rankings + gains.
 NDCG_A = 0.7340895391998685     # Q0 (equivalence) query
@@ -231,7 +231,7 @@ class TestScoreTypedMetrics(_FixtureScored):
         # must agree with the gold-relation classification (used for H-nDCG)
         eq_pairs, sub_pairs = metrics._partition_preferred_by_relation(
             self.preferred)
-        for key, pairs in self.preferred.items():
+        for key, _pairs in self.preferred.items():
             gold_is_sub = "equivalent" not in {r for _t, r in self.answers[key]}
             self.assertEqual(key in sub_pairs, gold_is_sub)
             self.assertEqual(key in eq_pairs, not gold_is_sub)

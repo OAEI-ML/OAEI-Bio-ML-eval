@@ -151,8 +151,8 @@ def _composition_members(ontology: object) -> list[dict[str, object]]:
         members = getattr(ontology, "members", None)
     if members is None and hasattr(ontology, "source") and hasattr(ontology, "target"):
         members = (
-            _SyntheticMember(getattr(ontology, "source"), "source"),
-            _SyntheticMember(getattr(ontology, "target"), "target"),
+            _SyntheticMember(ontology.source, "source"),
+            _SyntheticMember(ontology.target, "target"),
         )
     output: list[dict[str, object]] = []
     for member in members or ():

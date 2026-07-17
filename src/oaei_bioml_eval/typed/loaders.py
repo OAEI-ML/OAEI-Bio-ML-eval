@@ -48,7 +48,7 @@ def load_answers(
                 f"answers.tsv target/relation length mismatch for {src!r} "
                 f"({len(targets)} targets vs {len(relations)} relations)."
             )
-        for target, relation in zip(targets, relations):
+        for target, relation in zip(targets, relations, strict=True):
             answers[(src, query_id)].add((target, relation))
     return dict(answers)
 

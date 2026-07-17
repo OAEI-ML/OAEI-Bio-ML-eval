@@ -14,18 +14,18 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
+from oaei_bioml_eval.coherence import cli as coherence_cli
 from oaei_bioml_eval.coherence import metrics, structural
 from oaei_bioml_eval.coherence.bridge import (
     compose_alignment_views,
     normalize_correspondences,
 )
+from oaei_bioml_eval.coherence.native_reasoners import HermiTTimeoutError
 from oaei_bioml_eval.coherence.reasoner import (
     CoherenceReasoner,
     UnsatResult,
     load_reasoner,
 )
-from oaei_bioml_eval.coherence import cli as coherence_cli
-from oaei_bioml_eval.coherence.native_reasoners import HermiTTimeoutError
 from oaei_bioml_eval.coherence.report import (
     score_global_coherence,
     score_global_coherence_files,
@@ -398,10 +398,20 @@ if _pyowl_core is not None:
             self.assertIs(merged.members[0].view, source)
             self.assertIs(merged.members[1].view, target)
             self.assertTrue(
-                all(before is after for before, after in zip(source_axioms, source.iter_axioms()))
+                all(
+                    before is after
+                    for before, after in zip(
+                        source_axioms, source.iter_axioms(), strict=True
+                    )
+                )
             )
             self.assertTrue(
-                all(before is after for before, after in zip(target_axioms, target.iter_axioms()))
+                all(
+                    before is after
+                    for before, after in zip(
+                        target_axioms, target.iter_axioms(), strict=True
+                    )
+                )
             )
 
         def test_concrete_snapshots_reach_shared_seam_by_identity(self):

@@ -1,45 +1,104 @@
 # OAEI-Bio-ML-eval
 
-This package houses common evaluation logic for the public and organiser-facing OAEI Bio-ML
-repositories. Participants and organisers should calculate leaderboard metrics with the same
-versioned code.
+OAEI-Bio-ML-eval is the shared, versioned scoring package for the public and
+organiser-facing OAEI Bio-ML repositories. Version 0.2.0 supports Python 3.10+
+and removes Java from the evaluation runtime.
 
-## Current status
+The package provides:
 
-The repository metadata is currently `0.1.0.dev0` and requires Python 3.12. Typed Track 2 and
-equivalence Track 1 metrics are implemented and tested. Coherence is also implemented, but its
-official reasoner path currently depends on Java through an external ROBOT process or optional
-DeepOnto/JPype.
+- Track 1 equivalence Precision/Recall/F1 and local MRR/Hits@k;
+- Track 2 preferred relation-aware MRR and hierarchy-aware typed nDCG@10;
+- explicit micro and macro cross-task aggregation; and
+- organiser-computed alignment coherence over shared OWL views using native
+  pyHermiT or pyELK.
 
-The planned `0.2.0` migration removes those Java paths, supports Python 3.10 and newer, and
-classifies shared `pyowl_core` ontology views with native pyHermiT and pyELK. This is a plan, not
-a claim about the current runtime. See the [specification index](specs/README.md) and the
-[`0.2.0` migration specification](specs/0.2.0-native-owl-stack.md).
+Typed/equivalence metric cores and alignment-TSV loaders have no runtime
+dependencies. RDF parsing and native reasoning are opt-in extras.
 
-The migration deliberately separates two concerns:
+## Installation
 
-- typed/equivalence scoring and their file loaders remain lightweight and behavior-frozen; and
-- official coherence gains snapshot-first APIs and Java-free optional reasoners.
+```bash
+python -m pip install oaei-bioml-eval
+python -m pip install 'oaei-bioml-eval[rdf]'
+python -m pip install 'oaei-bioml-eval[reasoner]'
+# both optional surfaces
+python -m pip install 'oaei-bioml-eval[all]'
+```
 
-## Modules
+The reasoner extra installs compatible 0.1-series releases of `pyowl-core`,
+`pyHermiT`, and `pyelk-reasoner`. Supported wheels require neither Java nor a
+local Rust/C compiler; dependency-level accelerated implementations may be used
+when available, while their compiler-free implementations preserve portability.
+See [installation and deployment](docs/installation.md).
 
-- `equivalence/` — Track 1 global Precision/Recall/F1 and local MRR/Hits@k.
-- `typed/` — Track 2 Preferred Relation-Aware MRR and Hierarchy-Aware Typed nDCG@10.
-- `coherence/` — official reasoner-based degree of incoherence plus a distinctly named
-  structural participant proxy.
+## CLI
 
-OAEI-Bio-ML-eval remains BioML-owned so tracks can evolve independently. It must not depend on
-Exact-OM; both may share the lower-level OWL core and reasoner packages.
+```bash
+oaei-bioml-equivalence-score global submission.tsv reference.tsv
+oaei-bioml-typed-score submission.block.tsv answers.tsv
 
-## Cross-task averaging
+oaei-bioml-coherence-score global submission.tsv source.owl target.owl \
+  --reasoner hermit --timeout 7200 --output coherence.json
+oaei-bioml-coherence-score local local.test.ranked.tsv source.owl target.owl \
+  --reasoner elk
+```
 
-The metric families expose an explicit `aggregate_across_tasks(..., average=...)` choice.
-Use `average="micro"` for Conference-style pooled evaluation and `average="macro"` for the
-equal-task weighting used by Bio-ML and other multi-dataset reports. Micro aggregation recomputes
-metrics from counts/query denominators; it does not average already-computed percentages.
+Coherence is a degree of incoherence: `0` is clean and larger values are worse.
+HermiT is the exact default. A cooperative HermiT timeout alone falls back to
+ELK over the same composite and marks the result as an EL lower bound. The
+`structural` command is a distinctly labeled, non-official proxy.
 
-## Packaging
+## Shared-view API
 
-The package uses PEP 621 and hatchling and is consumable with uv, Poetry, and pip. The base
-installation stays small. RDF alignment parsing and native coherence remain explicit extras in
-the `0.2.0` plan.
+Callers that already loaded ontologies—such as Exact-OM—can pass the same
+`pyowl_core.OntologyView` objects directly, avoiding serialization and duplicate
+parsing:
+
+```python
+from oaei_bioml_eval.coherence import score_global_coherence
+
+report = score_global_coherence(
+    [("https://example.org/Source", "https://example.org/Target")],
+    source_view,
+    target_view,
+    reasoner="hermit",
+    timeout_s=7200.0,
+)
+```
+
+Path, byte, stream, provider, and existing-view inputs are also accepted by the
+`*_files` wrappers. Each source and target input is coerced once through
+`pyowl-core`; one zero-copy composite is shared by signature calculation and
+reasoning. OAEI-Bio-ML-eval never imports Exact-OM, so dependency direction
+remains clean. See [coherence API and semantics](docs/coherence.md).
+
+## Aggregation policy
+
+Use `aggregate_across_tasks(..., average="micro")` for Conference-style pooled
+evaluation and `average="macro"` for equal task weighting used by Bio-ML.
+Micro aggregation recomputes metrics from sufficient statistics; it never
+approximates them by averaging already-computed percentages.
+
+## Reproducibility
+
+Official coherence output includes `coherence-provenance/1`: package and API
+versions, semantic fingerprints, normalized bridge digest, requested/actual
+reasoner, timeout/fallback details, profile status, and numerator/denominator
+digests. Local paths, timestamps, and Python object identities are excluded from
+semantic digests.
+
+The pre-migration metric contract remains byte-frozen in
+`tests/baselines/metric-contract-v1.json`. Historical ROBOT 1.9.10 JSON is kept
+only as a quarantined development oracle; it is outside the installable package
+and ordinary CI.
+
+## Release information
+
+- [0.2 migration guide](docs/migration-0.2.md)
+- [changelog](CHANGELOG.md)
+- [SPDX SBOM](SBOM.spdx.json)
+- [native-stack specification](specs/0.2.0-native-owl-stack.md)
+- [release evidence](reports/O5-release.md)
+
+Licensed under Apache-2.0. Optional dependencies retain their own licenses; see
+[dependency and license notes](docs/installation.md#dependency-and-license-boundary).

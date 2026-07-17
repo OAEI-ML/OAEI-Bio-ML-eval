@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import Sequence
+from collections.abc import Sequence
 
 from .metrics import DEFAULT_RELATIONS
 from .relevance import DEFAULT_MAX_DISTANCE

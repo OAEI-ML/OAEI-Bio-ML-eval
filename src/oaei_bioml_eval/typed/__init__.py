@@ -43,9 +43,9 @@ from .report import (
 )
 
 __all__ = [
-    "aggregate_across_tasks",
     "DEFAULT_MAX_DISTANCE",
     "DEFAULT_RELATIONS",
+    "aggregate_across_tasks",
     "compute_graded_relevance",
     "hierarchy_aware_ndcg",
     "load_answers",

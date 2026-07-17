@@ -10,11 +10,11 @@ from pathlib import Path
 from typing import Any, cast
 
 from oaei_bioml_eval.coherence.bridge import Correspondence
-from oaei_bioml_eval.coherence.provenance import sorted_line_sha256
 from oaei_bioml_eval.coherence.native_reasoners import (
     HermiTReasoner,
     HermiTTimeoutError,
 )
+from oaei_bioml_eval.coherence.provenance import sorted_line_sha256
 from oaei_bioml_eval.coherence.report import ReasonerName, score_reference_coherence
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -137,7 +137,7 @@ class _FixtureMixin:
                 "Declaration(NamedIndividual(<urn:oaei:inconsistent:witness>)) "
                 "ClassAssertion(<http://www.w3.org/2002/07/owl#Nothing> "
                 "<urn:oaei:inconsistent:witness>))"
-            ).encode("utf-8")
+            ).encode()
         )
         target = pyowl_core.coerce_snapshot(
             f"Ontology(<urn:oaei:target> Declaration(Class(<{B}>)))".encode()

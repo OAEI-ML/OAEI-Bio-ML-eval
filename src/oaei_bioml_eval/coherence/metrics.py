@@ -23,7 +23,6 @@ from collections.abc import Iterable
 
 from ..aggregation import AverageMode, validate_average, weighted_mean
 
-
 _QUANTIZE = 12  # dp; parity with equivalence/ + typed/ (canonical, BLAS-noise-stable)
 
 # counts SUM across tasks; everything else (the degrees) is a rate, MEAN-ed. named

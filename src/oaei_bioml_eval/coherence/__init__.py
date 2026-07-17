@@ -22,8 +22,8 @@ from __future__ import annotations
 
 from .bridge import SnapshotCompatibilityError
 from .metrics import (
-    aggregate_across_tasks,
     _COUNT_METRICS_COHERENCE,
+    aggregate_across_tasks,
     global_coherence_ratio,
     local_coherence_aggregate,
     macro_average_across_tasks,
@@ -51,24 +51,24 @@ from .report import (
 )
 
 __all__ = [
-    "aggregate_across_tasks",
+    "_COUNT_METRICS_COHERENCE",
     "CoherenceReasoner",
     "ELKReasoner",
     "ELKTimeoutError",
     "HermiTReasoner",
     "HermiTTimeoutError",
-    "UnsatResult",
-    "_COUNT_METRICS_COHERENCE",
-    "global_coherence_ratio",
-    "load_reasoner",
-    "local_coherence_aggregate",
-    "macro_average_across_tasks",
-    "micro_average_across_tasks",
     "NativeReasoner",
     "NativeReasonerCompatibilityError",
     "NativeReasonerUnavailableError",
     "NativeWorkerError",
     "SnapshotCompatibilityError",
+    "UnsatResult",
+    "aggregate_across_tasks",
+    "global_coherence_ratio",
+    "load_reasoner",
+    "local_coherence_aggregate",
+    "macro_average_across_tasks",
+    "micro_average_across_tasks",
     "score_global_coherence",
     "score_global_coherence_files",
     "score_local_coherence",

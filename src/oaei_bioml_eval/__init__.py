@@ -17,4 +17,4 @@ Planned surface (see OAEI-Bio-ML-private/docs/PROJECT.md §4):
                  self-guidance (named distinctly from the official value)
 """
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.2.0"

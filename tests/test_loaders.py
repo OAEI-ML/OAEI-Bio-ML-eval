@@ -10,10 +10,10 @@ import unittest
 import warnings
 from pathlib import Path
 
+from _fixtures import FIXTURES, write_tsv
+
 from oaei_bioml_eval.typed import loaders
 from oaei_bioml_eval.typed.metrics import DEFAULT_RELATIONS
-
-from _fixtures import FIXTURES, write_tsv
 
 
 class TestGoldLoaders(unittest.TestCase):

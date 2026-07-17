@@ -223,11 +223,10 @@ class TestCapabilityBoundary(unittest.TestCase):
         with mock.patch(
             "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
             side_effect=error,
-        ):
-            with self.assertRaises(NativeReasonerUnavailableError):
-                HermiTReasoner().unsatisfiable_classes_view(
-                    object(), which="hermit", timeout_s=1.0
-                )
+        ), self.assertRaises(NativeReasonerUnavailableError):
+            HermiTReasoner().unsatisfiable_classes_view(
+                object(), which="hermit", timeout_s=1.0
+            )
 
     def test_incomplete_frozen_facade_fails_without_fallback(self):
         module = types.ModuleType("pyhermit")
@@ -235,13 +234,12 @@ class TestCapabilityBoundary(unittest.TestCase):
         with mock.patch(
             "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
             return_value=module,
+        ), self.assertRaisesRegex(
+            NativeReasonerCompatibilityError, "frozen public facade"
         ):
-            with self.assertRaisesRegex(
-                NativeReasonerCompatibilityError, "frozen public facade"
-            ):
-                HermiTReasoner().unsatisfiable_classes_view(
-                    object(), which="hermit", timeout_s=1.0
-                )
+            HermiTReasoner().unsatisfiable_classes_view(
+                object(), which="hermit", timeout_s=1.0
+            )
 
     def test_incompatible_reasoner_version_fails_explicitly(self):
         module = _pyhermit_module()
@@ -249,13 +247,12 @@ class TestCapabilityBoundary(unittest.TestCase):
         with mock.patch(
             "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
             return_value=module,
+        ), self.assertRaisesRegex(
+            NativeReasonerCompatibilityError, "expected >=0.1,<0.2"
         ):
-            with self.assertRaisesRegex(
-                NativeReasonerCompatibilityError, "expected >=0.1,<0.2"
-            ):
-                HermiTReasoner().unsatisfiable_classes_view(
-                    object(), which="hermit", timeout_s=1.0
-                )
+            HermiTReasoner().unsatisfiable_classes_view(
+                object(), which="hermit", timeout_s=1.0
+            )
 
     def test_pyelk_uses_the_distribution_name_not_the_import_name(self):
         module = _pyelk_module()
@@ -274,11 +271,14 @@ class TestCapabilityBoundary(unittest.TestCase):
         self.assertEqual(result.provenance["package_version"], "0.1.0.dev0")
 
 
+_DEFAULT_ONTOLOGY = object()
+
+
 class TestHermiTAdapter(unittest.TestCase):
     def setUp(self):
         _HermiTSession.mode = "consistent"
 
-    def _classify(self, ontology=object()):
+    def _classify(self, ontology=_DEFAULT_ONTOLOGY):
         with mock.patch(
             "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
             return_value=_pyhermit_module(),
@@ -381,13 +381,12 @@ class TestELKAdapter(unittest.TestCase):
         ), mock.patch(
             "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
             return_value=incomplete_core,
+        ), self.assertRaisesRegex(
+            NativeReasonerCompatibilityError, "wire contract"
         ):
-            with self.assertRaisesRegex(
-                NativeReasonerCompatibilityError, "wire contract"
-            ):
-                ELKReasoner().unsatisfiable_classes_view(
-                    object(), which="elk", timeout_s=1.0
-                )
+            ELKReasoner().unsatisfiable_classes_view(
+                object(), which="elk", timeout_s=1.0
+            )
 
     def test_unverified_or_reparsed_worker_result_is_rejected(self):
         envelope = CoreWireEnvelope(b"wire", {}, (1, 0), "0.1.0.dev0")
@@ -408,11 +407,10 @@ class TestELKAdapter(unittest.TestCase):
         ), mock.patch(
             "oaei_bioml_eval.coherence.native_reasoners._run_elk_worker",
             return_value=outcome,
-        ):
-            with self.assertRaisesRegex(NativeWorkerError, "zero OWL parses"):
-                ELKReasoner().unsatisfiable_classes_view(
-                    object(), which="elk", timeout_s=1.0
-                )
+        ), self.assertRaisesRegex(NativeWorkerError, "zero OWL parses"):
+            ELKReasoner().unsatisfiable_classes_view(
+                object(), which="elk", timeout_s=1.0
+            )
 
     def test_inconsistent_elk_result_expands_to_the_full_signature(self):
         _ELKSession.inconsistent = True

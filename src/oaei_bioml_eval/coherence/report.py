@@ -46,9 +46,9 @@ from .bridge import (
 )
 from .loaders import load_committed_top1, load_global_pairs, load_relation_typed_correspondences
 from .metrics import global_coherence_ratio, local_coherence_aggregate
-from .reasoner import CoherenceReasoner, UnsatResult, load_reasoner
 from .native_reasoners import HermiTTimeoutError
 from .provenance import build_coherence_provenance
+from .reasoner import CoherenceReasoner, UnsatResult, load_reasoner
 
 ReasonerName = Literal["hermit", "elk"]
 MetricValue: TypeAlias = int | float | str | bool | dict[str, object]
@@ -79,11 +79,11 @@ def _validated_pairs(
     bad_set = set(bad)
     print(f"[coherence] WARNING: {summary}\n -> dropping these correspondences (skip_invalid).", file=sys.stderr)
     # preserve each item's arity (2-tuple `=` pair or 3-tuple `(s,t,rel)`) — only the IRI slots gate
-    retained = [
-        item
-        for item in pairs
-        if tuple(item)[0] not in bad_set and tuple(item)[1] not in bad_set
-    ]
+    retained: list[CorrespondenceT] = []
+    for item in pairs:
+        slots = tuple(item)
+        if slots[0] not in bad_set and slots[1] not in bad_set:
+            retained.append(item)
     return retained, len(pairs) - len(retained)
 
 

@@ -9,11 +9,22 @@ IRIs/CURIEs before scoring).
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from ..io import write_json
-from .loaders import load_global_submission, load_global_reference, load_local_gold, load_local_ranking
-from .metrics import DEFAULT_HITS_KS, global_prf1, global_prf1_coherence_aware, local_ranking_metrics
+from .loaders import (
+    load_global_reference,
+    load_global_submission,
+    load_local_gold,
+    load_local_ranking,
+)
+from .metrics import (
+    DEFAULT_HITS_KS,
+    global_prf1,
+    global_prf1_coherence_aware,
+    local_ranking_metrics,
+)
 
 
 def score_global_files(
@@ -21,7 +32,7 @@ def score_global_files(
     reference_path: str | Path,
     *,
     output_path: str | Path | None = None,
-    deprecated: object = None,
+    deprecated: Iterable[str] | None = None,
 ) -> dict[str, float]:
     """
     Subtask 1: BOTH global P/R/F1 families against the reference — the standard set
@@ -44,7 +55,10 @@ def score_global_files(
     reference, flagged = load_global_reference(reference_path)
     if deprecated:
         dep = set(deprecated)
-        drop = lambda pairs: {(s, t) for (s, t) in pairs if s not in dep and t not in dep}
+
+        def drop(pairs: set[tuple[str, str]]) -> set[tuple[str, str]]:
+            return {(source, target) for source, target in pairs if source not in dep and target not in dep}
+
         predicted, reference, flagged = drop(predicted), drop(reference), drop(flagged)
     metrics = {
         **global_prf1(predicted, reference),
@@ -73,7 +87,9 @@ def score_local_files(
         )
     rank_by_query: dict[int, list[str]] = {}
     gold_by_query: dict[int, str] = {}
-    for index, ((sub_src, ranking), (gold_src, target)) in enumerate(zip(rankings, gold)):
+    for index, ((sub_src, ranking), (gold_src, target)) in enumerate(
+        zip(rankings, gold, strict=True)
+    ):
         if sub_src != gold_src:
             raise ValueError(
                 f"query {index}: submission source {sub_src!r} != gold source {gold_src!r}; "

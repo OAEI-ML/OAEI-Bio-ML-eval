@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .._rdf import rdf_api
 from ..io import parse_list, read_tsv
 from .metrics import rank_by_score
 
@@ -34,15 +35,18 @@ def load_pairs_tsv(path: str | Path) -> set[tuple[str, str]]:
 
 def load_pairs_rdf(path: str | Path) -> set[tuple[str, str]]:
     """`(entity1, entity2)` pairs from an OAEI Alignment-API RDF (equivalence cells)"""
-    from rdflib import Graph, URIRef    # type: ignore
-    from rdflib.namespace import RDF    # type: ignore
+    graph_factory, uri_ref, rdf = rdf_api()
 
-    align = lambda local: URIRef(_ALIGN_NS + local)   # noqa: E731 — terse local alias
-    graph = Graph()
+    def align(local: str) -> object:
+        return uri_ref(_ALIGN_NS + local)
+
+    graph = graph_factory()
     graph.parse(str(path))
     # union, NOT `or`: a mixed file (some cells typed align:Cell, some only carrying align:entity1)
     # would otherwise drop whichever set the `or` skips. Same BNode subjects dedupe, so this is safe.
-    cells = set(graph.subjects(RDF.type, align("Cell"))) | set(graph.subjects(align("entity1"), None))
+    cells = set(graph.subjects(rdf.type, align("Cell"))) | set(
+        graph.subjects(align("entity1"), None)
+    )
     pairs: set[tuple[str, str]] = set()
     for cell in cells:
         entity1 = next(graph.objects(cell, align("entity1")), None)
@@ -75,13 +79,16 @@ def load_global_submission(path: str | Path) -> set[tuple[str, str]]:
     """
     if Path(path).suffix.lower() not in _RDF_SUFFIXES:
         return load_pairs_tsv(path)
-    from rdflib import Graph, URIRef    # type: ignore
-    from rdflib.namespace import RDF    # type: ignore
+    graph_factory, uri_ref, rdf = rdf_api()
 
-    align = lambda local: URIRef(_ALIGN_NS + local)   # noqa: E731 — terse local alias
-    graph = Graph()
+    def align(local: str) -> object:
+        return uri_ref(_ALIGN_NS + local)
+
+    graph = graph_factory()
     graph.parse(str(path))
-    cells = set(graph.subjects(RDF.type, align("Cell"))) | set(graph.subjects(align("entity1"), None))
+    cells = set(graph.subjects(rdf.type, align("Cell"))) | set(
+        graph.subjects(align("entity1"), None)
+    )
     pairs: set[tuple[str, str]] = set()
     for cell in cells:
         entity1 = next(graph.objects(cell, align("entity1")), None)
@@ -100,15 +107,18 @@ def _load_reference_rdf(path: str | Path) -> tuple[set[tuple[str, str]], set[tup
     Option-Two references keep coherence-weakened correspondences as one-directional subsumptions
     (`<`/`>`/`<=`/`>=`); those count as reference POSITIVES (in R, never U) because the global
     task scores existence only — see _SUBSUMPTION_RELATIONS."""
-    from rdflib import Graph, URIRef    # type: ignore
-    from rdflib.namespace import RDF    # type: ignore
+    graph_factory, uri_ref, rdf = rdf_api()
 
-    align = lambda local: URIRef(_ALIGN_NS + local)   # noqa: E731 — terse local alias
-    graph = Graph()
+    def align(local: str) -> object:
+        return uri_ref(_ALIGN_NS + local)
+
+    graph = graph_factory()
     graph.parse(str(path))
     # union, NOT `or`: a mixed file (some cells typed align:Cell, some only carrying align:entity1)
     # would otherwise drop whichever set the `or` skips. Same BNode subjects dedupe, so this is safe.
-    cells = set(graph.subjects(RDF.type, align("Cell"))) | set(graph.subjects(align("entity1"), None))
+    cells = set(graph.subjects(rdf.type, align("Cell"))) | set(
+        graph.subjects(align("entity1"), None)
+    )
     reference: set[tuple[str, str]] = set()
     flagged: set[tuple[str, str]] = set()
     for cell in cells:

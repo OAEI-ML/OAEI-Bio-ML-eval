@@ -9,10 +9,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from _fixtures import FIXTURES, write_tsv
+
 from oaei_bioml_eval import io
 from oaei_bioml_eval.typed import report
-
-from _fixtures import FIXTURES, write_tsv
 
 NDCG_A = 0.7340895391998685
 NDCG_B = 0.6696718164942300

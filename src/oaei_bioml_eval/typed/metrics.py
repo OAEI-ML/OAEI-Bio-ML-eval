@@ -26,8 +26,8 @@ from collections import defaultdict
 
 from ..hierarchy import HierarchyIndex
 from .relevance import (
-    DEFAULT_MAX_DISTANCE,
     _PREFERRED_RELATION_ORDER,
+    DEFAULT_MAX_DISTANCE,
     compute_graded_relevance,
 )
 
@@ -221,7 +221,10 @@ def score_preferred_typed_metrics(
 
 def _partition_preferred_by_relation(
     preferred_pairs: dict[tuple[str, str], list[tuple[str, str]]],
-) -> tuple[dict, dict]:
+) -> tuple[
+    dict[tuple[str, str], list[tuple[str, str]]],
+    dict[tuple[str, str], list[tuple[str, str]]],
+]:
     """
     Split the preferred pairs into the equivalence (Q0) and subsumption-only (Q1)
     query sets, by the preferred relation. Under the N=1 invariant this is the

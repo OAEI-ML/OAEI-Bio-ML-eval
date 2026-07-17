@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import unittest
 
+from _fixtures import FIXTURES
+
 from oaei_bioml_eval.typed import diagnostic, loaders
 from oaei_bioml_eval.typed.metrics import DEFAULT_RELATIONS
-
-from _fixtures import FIXTURES
 
 
 class _FixtureScored(unittest.TestCase):

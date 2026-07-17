@@ -15,14 +15,15 @@ lexicographic tie-break match the typed half and candi-pool.
 """
 from __future__ import annotations
 
-from collections.abc import Hashable, Sequence
+from collections.abc import Hashable, Mapping, Sequence
 from statistics import mean as _mean
+from typing import TypeVar
 
 from ..aggregation import AverageMode, validate_average, weighted_mean
 
-
 _QUANTIZE = 12  # dp; BLAS-noise-stable sort, parity with typed/
 DEFAULT_HITS_KS: tuple[int, ...] = (1, 5, 10)
+QueryKey = TypeVar("QueryKey", bound=Hashable)
 
 # score-based ranking may carry small floating-point noise (a few ulp) from upstream computation 
 # since threaded and cross-vendor BLAS reductions are not neccesarily bit-reproducible (see ref). 
@@ -117,8 +118,8 @@ def _rank_of(gold: str, ranked: Sequence[str]) -> int:
 
 
 def local_ranking_metrics(
-    rankings: dict[Hashable, Sequence[str]],
-    golds: dict[Hashable, str],
+    rankings: Mapping[QueryKey, Sequence[str]],
+    golds: Mapping[QueryKey, str],
     *,
     hits_ks: tuple[int, ...] = DEFAULT_HITS_KS,
 ) -> dict[str, float]:

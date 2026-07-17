@@ -1,0 +1,145 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "creationInfo": {
+    "created": "2026-07-17T00:00:00Z",
+    "creators": [
+      "Organization: OAEI-ML",
+      "Tool: OAEI-Bio-ML-eval release audit"
+    ]
+  },
+  "dataLicense": "CC0-1.0",
+  "documentDescribes": [
+    "SPDXRef-Package-OAEI-Bio-ML-eval"
+  ],
+  "documentNamespace": "https://github.com/OAEI-ML/OAEI-Bio-ML-eval/sbom/0.2.0/2026-07-17",
+  "name": "oaei-bioml-eval-0.2.0",
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-OAEI-Bio-ML-eval",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "https://github.com/OAEI-ML/OAEI-Bio-ML-eval",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:pypi/oaei-bioml-eval@0.2.0",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "oaei-bioml-eval",
+      "primaryPackagePurpose": "LIBRARY",
+      "supplier": "Organization: OAEI-ML",
+      "versionInfo": "0.2.0"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-RDFLib",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "https://pypi.org/project/rdflib/",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:pypi/rdflib",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "name": "rdflib",
+      "primaryPackagePurpose": "LIBRARY",
+      "supplier": "NOASSERTION",
+      "versionInfo": ">=7.0,<8"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-pyowl-core",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "https://github.com/OAEI-ML/pyOWLCore",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:pypi/pyowl-core",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "name": "pyowl-core",
+      "primaryPackagePurpose": "LIBRARY",
+      "supplier": "Organization: OAEI-ML",
+      "versionInfo": ">=0.1,<0.2"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-pyHermiT",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "https://github.com/OAEI-ML/pyHermiT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:pypi/pyhermit",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "LGPL-3.0-or-later",
+      "name": "pyHermiT",
+      "primaryPackagePurpose": "LIBRARY",
+      "supplier": "Organization: OAEI-ML",
+      "versionInfo": ">=0.1,<0.2"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-pyelk-reasoner",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "https://github.com/OAEI-ML/pyELK",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:pypi/pyelk-reasoner",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "name": "pyelk-reasoner",
+      "primaryPackagePurpose": "LIBRARY",
+      "supplier": "Organization: OAEI-ML",
+      "versionInfo": ">=0.1,<0.2"
+    }
+  ],
+  "relationships": [
+    {
+      "relatedSpdxElement": "SPDXRef-Package-OAEI-Bio-ML-eval",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "comment": "Optional rdf extra",
+      "relatedSpdxElement": "SPDXRef-Package-RDFLib",
+      "relationshipType": "OTHER",
+      "spdxElementId": "SPDXRef-Package-OAEI-Bio-ML-eval"
+    },
+    {
+      "comment": "Optional reasoner extra",
+      "relatedSpdxElement": "SPDXRef-Package-pyowl-core",
+      "relationshipType": "OTHER",
+      "spdxElementId": "SPDXRef-Package-OAEI-Bio-ML-eval"
+    },
+    {
+      "comment": "Optional reasoner extra",
+      "relatedSpdxElement": "SPDXRef-Package-pyHermiT",
+      "relationshipType": "OTHER",
+      "spdxElementId": "SPDXRef-Package-OAEI-Bio-ML-eval"
+    },
+    {
+      "comment": "Optional reasoner extra",
+      "relatedSpdxElement": "SPDXRef-Package-pyelk-reasoner",
+      "relationshipType": "OTHER",
+      "spdxElementId": "SPDXRef-Package-OAEI-Bio-ML-eval"
+    }
+  ],
+  "spdxVersion": "SPDX-2.3"
+}

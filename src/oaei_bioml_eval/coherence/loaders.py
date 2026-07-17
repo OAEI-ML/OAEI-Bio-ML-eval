@@ -11,10 +11,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .._rdf import rdf_api
+from ..equivalence.loaders import load_global_pairs  # the `=` set; re-exported
 from ..io import parse_list, read_tsv
-from ..equivalence.loaders import load_global_pairs   # the `=` set; re-exported
 
-__all__ = ["load_global_pairs", "load_committed_top1", "load_relation_typed_correspondences"]
+__all__ = ["load_committed_top1", "load_global_pairs", "load_relation_typed_correspondences"]
 
 _RDF_SUFFIXES = {".rdf", ".xml", ".owl", ".ttl", ".n3"}
 _ALIGN_NS = "http://knowledgeweb.semanticweb.org/heterogeneity/alignment#"
@@ -37,13 +38,16 @@ def load_relation_typed_correspondences(path: str | Path) -> list[tuple[str, str
             if canon is not None:
                 out.append((row["SrcEntity"], row["TgtEntity"], canon))
         return out
-    from rdflib import Graph, URIRef    # type: ignore
-    from rdflib.namespace import RDF    # type: ignore
+    graph_factory, uri_ref, rdf = rdf_api()
 
-    align = lambda local: URIRef(_ALIGN_NS + local)   # noqa: E731 — terse local alias
-    graph = Graph()
+    def align(local: str) -> object:
+        return uri_ref(_ALIGN_NS + local)
+
+    graph = graph_factory()
     graph.parse(str(path))
-    cells = set(graph.subjects(RDF.type, align("Cell"))) | set(graph.subjects(align("entity1"), None))
+    cells = set(graph.subjects(rdf.type, align("Cell"))) | set(
+        graph.subjects(align("entity1"), None)
+    )
     out = []
     for cell in cells:
         entity1 = next(graph.objects(cell, align("entity1")), None)
@@ -51,7 +55,7 @@ def load_relation_typed_correspondences(path: str | Path) -> list[tuple[str, str
         relation = next(graph.objects(cell, align("relation")), None)
         if entity1 is None or entity2 is None:
             continue
-        canon = _REL_CANON.get(("" if relation is None else str(relation).strip()))
+        canon = _REL_CANON.get("" if relation is None else str(relation).strip())
         if canon is not None:   # drop '?' / unknown
             out.append((str(entity1), str(entity2), canon))
     return out
