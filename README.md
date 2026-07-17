@@ -1,23 +1,38 @@
 # OAEI-Bio-ML-eval
 
-Houses the common evaluation logic for both the public and private facing repos in OAEI-Bio-ML.
+This package houses common evaluation logic for the public and organiser-facing OAEI Bio-ML
+repositories. Participants and organisers should calculate leaderboard metrics with the same
+versioned code.
 
-Both `OAEI-Bio-ML` (participant-facing) and `OAEI-Bio-ML-private` (organiser-side) depend on this package, so participants self-score with the *same* code that produces the official leaderboard numbers _(the coherence-based metrics are still TBD)_.
+## Current status
 
-Note that this repo is BioML-owned (signaled by the explicit naming convention). This is deliberate. Although logic may be shared across multiple OAEI-ML tracks (e.g., Bio-ML and BioKG-Align); the different tracks can evolve in different directions over time. As such, this repo should only ever be required as a dependency from `OAIE-Bio-ML` and `OAEI-Bio-ML-private`.
+The repository metadata is currently `0.1.0.dev0` and requires Python 3.12. Typed Track 2 and
+equivalence Track 1 metrics are implemented and tested. Coherence is also implemented, but its
+official reasoner path currently depends on Java through an external ROBOT process or optional
+DeepOnto/JPype.
 
-## Status
+The planned `0.2.0` migration removes those Java paths, supports Python 3.10 and newer, and
+classifies shared `pyowl_core` ontology views with native pyHermiT and pyELK. This is a plan, not
+a claim about the current runtime. See the [specification index](specs/README.md) and the
+[`0.2.0` migration specification](specs/0.2.0-native-owl-stack.md).
 
-`v0.1.0.dev0` — package skeleton only. 
+The migration deliberately separates two concerns:
 
-The evaluation modules are implemented in the scoring phase (see `docs/PRD.md` in `OAEI-Bio-ML-private`).
+- typed/equivalence scoring and their file loaders remain lightweight and behavior-frozen; and
+- official coherence gains snapshot-first APIs and Java-free optional reasoners.
 
-## Planned layout
+## Modules
 
-- `equivalence/` — Track 1 metrics: Precision/Recall/F1 (global) and MRR/Hits@k (local), plus the **official reasoner-based coherence** (organiser-side).
-- `typed/` — Track 2 metrics: Preferred Relation-Aware (Typed) MRR and Hierarchy-Aware Typed nDCG@10. Dependency-free; seeded from BioKG-Align.
-- `coherence/` — a lightweight **structural coherence proxy** for participant self-guidance, named distinctly from the official reasoner value.
+- `equivalence/` — Track 1 global Precision/Recall/F1 and local MRR/Hits@k.
+- `typed/` — Track 2 Preferred Relation-Aware MRR and Hierarchy-Aware Typed nDCG@10.
+- `coherence/` — official reasoner-based degree of incoherence plus a distinctly named
+  structural participant proxy.
+
+OAEI-Bio-ML-eval remains BioML-owned so tracks can evolve independently. It must not depend on
+Exact-OM; both may share the lower-level OWL core and reasoner packages.
 
 ## Packaging
 
-PEP 621 + hatchling, so it is consumable by uv, Poetry, and plain pip alike.
+The package uses PEP 621 and hatchling and is consumable with uv, Poetry, and pip. The base
+installation stays small. RDF alignment parsing and native coherence remain explicit extras in
+the `0.2.0` plan.

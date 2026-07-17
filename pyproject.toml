@@ -7,6 +7,8 @@ name = "oaei-bioml-eval"
 version = "0.1.0.dev0"
 description = "Common evaluation/scoring logic for the OAEI Bio-ML tracks (public + private)."
 requires-python = ">=3.12"
+# Planned together for the implemented release: version 0.2.0 and Python >=3.10.
+# Do not change either early; the full Java-free gate is specs/0.2.0-native-owl-stack.md.
 license = { text = "Apache-2.0" }
 # Kept deliberately light so participants can self-score with a small install.
 # The typed-ranking metrics (Track 2) and the structural-coherence proxy are
