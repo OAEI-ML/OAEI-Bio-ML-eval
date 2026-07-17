@@ -1,0 +1,3 @@
+SrcEntity	TgtCandidates
+http://example.org/source/A	['http://example.org/target/X', 'http://example.org/target/A', 'http://example.org/target/Y']
+http://example.org/source/B	['http://example.org/target/B', 'http://example.org/target/Z', 'http://example.org/target/X']

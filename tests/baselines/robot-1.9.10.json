@@ -1,0 +1,134 @@
+{
+  "cases": {
+    "already_incoherent": {
+      "bridge": [],
+      "elk_unsatisfiable": [
+        "http://ex.org/A"
+      ],
+      "hermit_unsatisfiable": [
+        "http://ex.org/A"
+      ],
+      "named_classes": [
+        "http://ex.org/A",
+        "http://ex.org/P",
+        "http://ex.org/Q",
+        "http://ex.org/R",
+        "http://ex.org/T"
+      ],
+      "source": "incoherent-source.ofn",
+      "source_sha256": "7749266c96e683e9838d310ecd622b839a9fe588cd626c848a0a042c92daaa31",
+      "target": "empty-target.ofn",
+      "target_sha256": "302f7d1a70a77cf0210fec2fcd5552003a4acde0b627cf0bddc39797ecc154c8"
+    },
+    "equivalence_clash": {
+      "bridge": [
+        [
+          "http://ex.org/A",
+          "http://ex.org/B",
+          "="
+        ]
+      ],
+      "elk_unsatisfiable": [
+        "http://ex.org/A",
+        "http://ex.org/B"
+      ],
+      "hermit_unsatisfiable": [
+        "http://ex.org/A",
+        "http://ex.org/B"
+      ],
+      "named_classes": [
+        "http://ex.org/A",
+        "http://ex.org/B",
+        "http://ex.org/C",
+        "http://ex.org/D"
+      ],
+      "source": "clash-source.ofn",
+      "source_sha256": "4334df7760633b5c0e5643e5ee8d7f82164599d48b17edbb1d8280b19fb71f69",
+      "target": "clash-target.ofn",
+      "target_sha256": "f9a5a23c245e178fedf8bd1d0114fb8e511f91a1281c4e7f155264312e14fb8e"
+    },
+    "equivalence_clean": {
+      "bridge": [
+        [
+          "http://ex.org/A",
+          "http://ex.org/D",
+          "="
+        ]
+      ],
+      "elk_unsatisfiable": [],
+      "hermit_unsatisfiable": [],
+      "named_classes": [
+        "http://ex.org/A",
+        "http://ex.org/B",
+        "http://ex.org/C",
+        "http://ex.org/D"
+      ],
+      "source": "clash-source.ofn",
+      "source_sha256": "4334df7760633b5c0e5643e5ee8d7f82164599d48b17edbb1d8280b19fb71f69",
+      "target": "clash-target.ofn",
+      "target_sha256": "f9a5a23c245e178fedf8bd1d0114fb8e511f91a1281c4e7f155264312e14fb8e"
+    },
+    "subsumption_forward_clash": {
+      "bridge": [
+        [
+          "http://ex.org/A",
+          "http://ex.org/B",
+          "<="
+        ]
+      ],
+      "elk_unsatisfiable": [
+        "http://ex.org/A"
+      ],
+      "hermit_unsatisfiable": [
+        "http://ex.org/A"
+      ],
+      "named_classes": [
+        "http://ex.org/A",
+        "http://ex.org/B",
+        "http://ex.org/C",
+        "http://ex.org/D"
+      ],
+      "source": "clash-source.ofn",
+      "source_sha256": "4334df7760633b5c0e5643e5ee8d7f82164599d48b17edbb1d8280b19fb71f69",
+      "target": "clash-target.ofn",
+      "target_sha256": "f9a5a23c245e178fedf8bd1d0114fb8e511f91a1281c4e7f155264312e14fb8e"
+    },
+    "subsumption_reverse_clash": {
+      "bridge": [
+        [
+          "http://ex.org/A",
+          "http://ex.org/B",
+          ">="
+        ]
+      ],
+      "elk_unsatisfiable": [
+        "http://ex.org/B"
+      ],
+      "hermit_unsatisfiable": [
+        "http://ex.org/B"
+      ],
+      "named_classes": [
+        "http://ex.org/A",
+        "http://ex.org/B",
+        "http://ex.org/C",
+        "http://ex.org/D"
+      ],
+      "source": "clash-source.ofn",
+      "source_sha256": "4334df7760633b5c0e5643e5ee8d7f82164599d48b17edbb1d8280b19fb71f69",
+      "target": "clash-target.ofn",
+      "target_sha256": "f9a5a23c245e178fedf8bd1d0114fb8e511f91a1281c4e7f155264312e14fb8e"
+    }
+  },
+  "comparison": {
+    "class_order": "unicode-codepoint",
+    "elapsed_time_is_contract": false,
+    "owl_nothing_excluded": true
+  },
+  "java": "openjdk version \"11.0.31\" 2026-04-21\nOpenJDK Runtime Environment Homebrew (build 11.0.31+0)\nOpenJDK 64-Bit Server VM Homebrew (build 11.0.31+0, mixed mode)",
+  "robot": {
+    "release": "https://github.com/ontodev/robot/releases/tag/v1.9.10",
+    "sha256": "16a73c074f3df359a7338a84b4e0788785fe06117f931bb9796e9619ea776105",
+    "version": "ROBOT version 1.9.10"
+  },
+  "schema": "oaei-bioml-eval.robot-oracle/1"
+}

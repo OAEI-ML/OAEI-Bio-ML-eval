@@ -1,0 +1,5 @@
+Prefix(:=<http://ex.org/>)
+Ontology(<http://ex.org/clash-target>
+  Declaration(Class(:B))
+  Declaration(Class(:D))
+)

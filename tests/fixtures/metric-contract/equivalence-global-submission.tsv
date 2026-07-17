@@ -1,0 +1,3 @@
+SrcEntity	TgtEntity
+http://example.org/source/A	http://example.org/target/A
+http://example.org/source/A	http://example.org/target/Z

@@ -1,0 +1,13 @@
+Prefix(:=<http://ex.org/>)
+Ontology(<http://ex.org/incoherent-source>
+  Declaration(Class(:A))
+  Declaration(Class(:P))
+  Declaration(Class(:Q))
+  Declaration(Class(:R))
+  Declaration(Class(:T))
+  SubClassOf(:A :P)
+  SubClassOf(:A :Q)
+  SubClassOf(:P :R)
+  SubClassOf(:R :T)
+  DisjointClasses(:P :Q)
+)

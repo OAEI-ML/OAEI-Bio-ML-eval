@@ -1,0 +1,7 @@
+Prefix(:=<http://ex.org/>)
+Ontology(<http://ex.org/clash-source>
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  Declaration(Class(:C))
+  DisjointClasses(:A :B)
+)
