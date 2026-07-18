@@ -63,6 +63,7 @@ reported as locally tested.
 | Gate | CPython 3.10 | CPython 3.12 |
 |---|---:|---:|
 | installed-native suite (2026-07-18 refresh) | 178 passed, 6 optional skips, 24 subtests | 178 passed, 6 optional skips, 24 subtests |
+| current source/comparator suite | 180 passed, 6 optional skips | 180 passed, 6 optional skips |
 | full suite with RDFLib 7.6.0 | 177 passed | not locally run |
 | `metric-contract/1` | pass | pass |
 | compileall (`src`, `tools`, `tests`, `benchmarks`) | pass | pass |
@@ -71,7 +72,7 @@ reported as locally tested.
 | installed HermiT/ELK exact clash smoke | pass | pass |
 
 Ruff passes the complete maintained source/tool/test/benchmark surface, and
-strict mypy passes all 27 source files. The final
+strict mypy passes all 28 checked source/tool files. The final
 `oaei_bioml_eval-0.2.0-py3-none-any.whl` and
 `oaei_bioml_eval-0.2.0.tar.gz` build successfully, Twine validates both, and the
 source archive contains the release documentation, specifications, reports,
@@ -104,30 +105,29 @@ figures make the present bottlenecks visible; they do not establish a speedup.
 
 ## External acceptance and deployment status
 
-The pinned NCIT-DOID source, target, and alignment are present and match the frozen ROBOT
-evidence. A retained cached-wire diagnostic returned 24,227 named classes, 1,406
-correspondences, and exactly 2,227 unsatisfiable classes with digest
-`8dd56db2f864e757fb9fe04ca9b4cb6798e161597ff715f81175129db8bc27ab`, equal to the frozen Java
-ELK result. An unarchived installed-Rust terminal run was operator-observed as returning the same
-tuple. The comparator now captures and hash-verifies the exact buffers it parses and can
-alternatively bound the complete parse/compose/reason/report worker while requiring an unbounded
-inner reasoner, which prevents a nested reasoner worker from being orphaned. However, the
-unbounded run did not retain its JSON output and predates that schema-2 capture path. The
-operator observation is not durable release evidence. A fresh run against an identified current
-native wheel must persist the schema-2 result, binary hash,
-baseline hash, command, and timings. The observed 1,246.278 s reasoner time also fails
-performance parity. See the updated O3 report for commands, stage timings, caveats, and sibling
-revisions. Licensed
-SNOMED-scale inputs remain unavailable. The official leaderboard was not rerun end to end; only
-installed deployment, scoring smokes, and diagnostic NCIT-DOID executions were performed.
+The pinned NCIT-DOID source, target, and alignment match the frozen ROBOT evidence. The current
+schema-2 capture is persisted as `reports/O3-ncit-doid-schema2.json`, whose SHA-256 is
+`23ee9f77cc8fb24e4b2652173f5e4b87e25b36aa4d867810113d283459e917b7`. It binds the exact input
+buffers, baseline, pyowl-core provenance, current pyELK `1a05d16` Rust backend, and loaded native
+binary. It returned 24,227 named classes, 1,406 correspondences, and exactly 2,227 unsatisfiable
+classes with digest `8dd56db2f864e757fb9fe04ca9b4cb6798e161597ff715f81175129db8bc27ab`,
+equal to the frozen Java ELK result.
+
+The run closes the NCIT semantic and durable-evidence gates, but not performance acceptance:
+pyELK classification took 881.863 s and the bounded parse/compose/reason/report worker took
+1,162.032 s, versus 22.47 s for the recorded Java oracle. Standalone RDF/XML loading also selected
+pyowl-core's complete Python fallback because the installed core wheel did not advertise native
+RDF/XML parsing. See the O3 report for the exact command, hashes, caveats, historical attempts,
+and cached-view profile. Licensed SNOMED-scale inputs remain unavailable. The official leaderboard
+was not rerun end to end; only installed deployment, scoring smokes, and the pinned NCIT-DOID
+acceptance run were performed.
 
 Accordingly, the bounded O5 implementation is complete enough to commit and hand
 off, while publication/deployment remains blocked by:
 
 1. final compatible 0.1-series sibling releases;
-2. WPR2-WPR4 native performance work and repeatable large-ontology benchmarks;
-3. a persisted schema-2 NCIT-DOID comparison, NCIT-scale performance acceptance, and the
-   licensed SNOMED-scale gate; and
+2. further native performance optimization and repeatable large-ontology benchmarks;
+3. NCIT-scale performance acceptance and the licensed SNOMED-scale gate; and
 4. an end-to-end official leaderboard dry run on the resolved release artefacts.
 
 ## Reproduction

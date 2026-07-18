@@ -1,0 +1,256 @@
+{
+  "agreement": true,
+  "baseline": {
+    "bytes": 2350,
+    "filename": "robot-1.9.10-ncit-doid-train.json",
+    "sha256": "957831a1654c8151bbbd012cce0d0ff535622b3ad64141a84ed5109e5fc2b1a2"
+  },
+  "baseline_schema": "oaei-bioml-eval.robot-large-evidence/1",
+  "counts": {
+    "correspondences": 1406,
+    "named_classes": 24227,
+    "unsatisfiable": 2227
+  },
+  "execution": {
+    "driver_pre_serialization_elapsed_seconds": 1163.1777656850172,
+    "overall_timeout_seconds": 2400.0,
+    "reasoner_timeout_seconds": null,
+    "worker_elapsed_seconds": 1162.0317070860183
+  },
+  "inputs": {
+    "alignment": {
+      "bytes": 144977,
+      "filename": "train.tsv",
+      "sha256": "9e417056a39996575c4409b4ea89b01dc5cc1f8962c9123975fc6594a3e089b9"
+    },
+    "source": {
+      "bytes": 57163710,
+      "filename": "source.owl",
+      "sha256": "379a37f47c0c8e7c30397769358cca955140d16b2797a1cc75da4b1fc2b354eb"
+    },
+    "target": {
+      "bytes": 6687536,
+      "filename": "target.owl",
+      "sha256": "76f41cce3616ad1a9ba6353f469e96bde7addba5d43e541651a3ab703f9ba2bc"
+    }
+  },
+  "provenance": {
+    "bridge": {
+      "duplicate_count": 0,
+      "fingerprint": "c658d2d203f20dac98fa64dc1e53cc2674ca9c1758177b1afb6f73765dbbb4a4",
+      "fingerprint_scheme": "sha256-domain-json-v1",
+      "input_count": 1406,
+      "invalid_dropped_count": 0,
+      "normalized_count": 1406,
+      "self_pair_count": 0
+    },
+    "core": {
+      "adapter_protocol": 1,
+      "api_version": [
+        0,
+        1
+      ],
+      "capabilities": {
+        "backend": "python",
+        "features": [
+          "document-boundaries",
+          "document-scoped-anonymous",
+          "immutable-snapshot",
+          "import-manifest",
+          "member-provenance",
+          "ontology-composite",
+          "ontology-identity-index",
+          "owl2-structural",
+          "structural-indexes",
+          "zero-copy-view"
+        ]
+      },
+      "composition_provenance_digest": "399415f2e991f7e8838cb4719ea34046f57228a22dc73e734f9e69d494d6dd25",
+      "documents": [
+        {
+          "complete": true,
+          "documents": [
+            {
+              "document_fingerprint": "258175c5bc8c1ecc55509265d35e97f27050f64d6dae4df7a14b55f0db629b18",
+              "document_iri_sha256": "cc9d18a899edc992ed0cdaa8f2b2c9ca80ee7234d77746069f382314c84c8442",
+              "document_key": "d1:87c5174ea1acc7a7bf970614bd56c2bf416c136496994420b8ad2a734605079b",
+              "source_sha256": "379a37f47c0c8e7c30397769358cca955140d16b2797a1cc75da4b1fc2b354eb"
+            }
+          ],
+          "edges": [],
+          "manifest_sha256": "e716357bc604f9fbddc3d695bf07913395020451b7a6ca293bfeee4e8142b3a4",
+          "offline": true,
+          "policy": "resolve_local",
+          "role": "source"
+        },
+        {
+          "complete": true,
+          "documents": [
+            {
+              "document_fingerprint": "dba81ae191733905b32bdf92e0c40de44ab81a246086db1d28e6db97f4bea1e7",
+              "document_iri_sha256": "5284a27840dc5781bfbfa1e15cae41c956be79be2c2d35f0b8d8a361f9d6ba94",
+              "document_key": "d1:dbef92323c63898fb4ad77284112cfa3fffbe37aa4ba99098a4450b35e3f40b6",
+              "source_sha256": "76f41cce3616ad1a9ba6353f469e96bde7addba5d43e541651a3ab703f9ba2bc"
+            }
+          ],
+          "edges": [],
+          "manifest_sha256": "489175cde7a986287bbc237e8cee38ccffa7545018a56bd5c01fb941e3b0eaea",
+          "offline": true,
+          "policy": "resolve_local",
+          "role": "target"
+        }
+      ],
+      "fingerprints": {
+        "logical": "175f365aa4c60965f684dab97b738d747d839f29fd931138cecab37dc25217fb",
+        "signature": "36bedfa6ae2ac94e4a37e49d2781725d7718bbca7ba389c002c3575eb1fce0f4",
+        "structural": "221a9d7543fed7d09e040e7dd7aef358c7adaa88c468cf38a883de38a92eb314"
+      },
+      "loader_diagnostics": [],
+      "model_schema": 1,
+      "package": "pyowl-core",
+      "package_version": "0.1.0.dev0",
+      "role_manifest": {
+        "member:6fc9cf7a8114cb1c0e079f3ea507a901eca9b1b1745482bd68e87dcd759cd93b": "target",
+        "member:95335b6721773dd60badf6d6ecef6bc745e94e14b03fd3b89bc62f821b658925": "source"
+      },
+      "roles": [
+        {
+          "logical": "b24608da18ae1985bacc6169dfb90b4ce91b0733aed3792c75b458c2b03c64f2",
+          "role": "source",
+          "signature": "d6d1e03dba3ed6b13f7b018f204780ab950ffd7221bbe1a7cd1ad6854766dcff",
+          "structural": "c16d929da9de187fe01a919752c8c5d87559ea782727d18282ecf8525495eed9"
+        },
+        {
+          "logical": "29a73cd4f700a45d34fceb789ca387a661190d93f44e18c26ff1b249d5029ef6",
+          "role": "target",
+          "signature": "02e6380f8f7eb796fb88c69c214cba4a636e3ab918a906fe407a28ae451423ad",
+          "structural": "c8b9f407630b09e811c72f4c832bbc910abd87630e8c0970f68913b12c05c85f"
+        }
+      ],
+      "wire_version": [
+        1,
+        1
+      ]
+    },
+    "execution": {
+      "api_options": {
+        "metric": "reference",
+        "skip_invalid": false
+      },
+      "implementation": "CPython",
+      "platform": {
+        "machine": "x86_64",
+        "system": "Darwin"
+      },
+      "python": "3.12.3"
+    },
+    "metric": {
+      "historical_key": "global_coherence",
+      "meaning": "degree-of-incoherence; zero-is-clean",
+      "methodology": "oaei-bioml-coherence/1",
+      "package": "oaei-bioml-eval",
+      "package_version": "0.2.0"
+    },
+    "reasoner": {
+      "actual": "elk",
+      "backend": {
+        "effective_workers": 12,
+        "fallback_reason": null,
+        "implementation_version": "0.1.0.dev0",
+        "ir_major": 1,
+        "ir_minor": 0,
+        "name": "rust",
+        "native_available": true,
+        "package_version": "0.1.0.dev0",
+        "requested_workers": 0
+      },
+      "elapsed_seconds": 881.8629124070285,
+      "fallback_reason": null,
+      "inconsistent": false,
+      "lower_bound": true,
+      "package": "pyELK",
+      "package_version": "0.1.0.dev0",
+      "prior_attempts": [],
+      "profile": {
+        "complete": false,
+        "reasons": [
+          {
+            "constructors": [
+              "Datatype"
+            ],
+            "features": [
+              "DATATYPE"
+            ],
+            "polarities": [
+              "ANY"
+            ],
+            "task": "class_taxonomy"
+          },
+          {
+            "constructors": [
+              "DatatypeDefinition"
+            ],
+            "features": [
+              "DATATYPE_DEFINITION"
+            ],
+            "polarities": [
+              "ANY"
+            ],
+            "task": "class_taxonomy"
+          },
+          {
+            "constructors": [
+              "ObjectUnionOf"
+            ],
+            "features": [
+              "OBJECT_UNION_OF_POSITIVE"
+            ],
+            "polarities": [
+              "POSITIVE"
+            ],
+            "task": "class_taxonomy"
+          }
+        ]
+      },
+      "requested": "elk",
+      "timeout_seconds": null,
+      "transport": {
+        "mode": "in-process-identity",
+        "owl_parse_count": 0,
+        "wire_verified": false
+      }
+    },
+    "result": {
+      "denominator_count": 24227,
+      "denominator_sha256": "1fa68a13c8d1ba1fa53fc1914dcee14c04bbabd8eb01cfbc4643c2b15e2a69fb",
+      "digest_scheme": "sorted-utf8-lines-sha256-v1",
+      "numerator_count": 2227,
+      "numerator_sha256": "8dd56db2f864e757fb9fe04ca9b4cb6798e161597ff715f81175129db8bc27ab"
+    },
+    "schema": "coherence-provenance/1"
+  },
+  "reasoner": "elk",
+  "runtime": {
+    "accelerated": true,
+    "accelerated_required": true,
+    "backend": {
+      "effective_workers": 12,
+      "fallback_reason": null,
+      "implementation_version": "0.1.0.dev0",
+      "ir_major": 1,
+      "ir_minor": 0,
+      "name": "rust",
+      "native_available": true,
+      "package_version": "0.1.0.dev0",
+      "requested_workers": 0
+    },
+    "native_artifact": {
+      "bytes": 1741904,
+      "filename": "_native.abi3.so",
+      "module": "pyelk._native",
+      "sha256": "5774b58598dbb7fbbd618b0bfc9c848983421292a6627ed7f5b423b7340b2990"
+    }
+  },
+  "schema": "oaei-bioml-eval.native-comparison/2",
+  "unsatisfiable_sha256": "8dd56db2f864e757fb9fe04ca9b4cb6798e161597ff715f81175129db8bc27ab"
+}

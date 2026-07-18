@@ -7,8 +7,7 @@ doubles alone. The verified local revisions are:
 
 - pyowl-core `354da9a`;
 - pyHermiT `d6196d7`; and
-- pyELK `1a05d16`, including cleared worker-local saturation workspace reuse;
-  the authoritative NCIT semantic run below remains tied to `e9a0892`.
+- pyELK `1a05d16`, including cleared worker-local saturation workspace reuse.
 
 `HermiTReasoner` retains the exact `OntologyComposite`, constructs the public
 `pyhermit.Reasoner` with a cooperative timeout, establishes consistency before
@@ -121,7 +120,7 @@ per-axiom conversion or reparsing, but it cannot make the sibling tableau/classi
 faster. Large-DL performance therefore remains a release gate for pyHermiT/native
 work and O5, not accepted performance evidence for this evaluator.
 
-## External real-data gate — operator-observed diagnostic, release capture pending
+## External real-data gate — semantic acceptance captured, performance blocked
 
 The pinned NCIT–DOID source, target, and 1,406-row training alignment are locally available and
 match the frozen hashes:
@@ -131,26 +130,39 @@ match the frozen hashes:
   and
 - alignment SHA-256 `9e417056a39996575c4409b4ea89b01dc5cc1f8962c9123975fc6594a3e089b9`.
 
-An earlier unbounded Java-free Python/Rust terminal run was operator-observed using pyowl-core
-`354da9a`, pyELK `e9a0892`, the public OAEI adapter, 12 effective workers, in-process snapshot
-identity, and zero OWL reparses. The terminal output reported 24,227 named classes, 1,406
-correspondences, and exactly 2,227 unsatisfiable classes. Its sorted-numerator SHA-256 was
+The current schema-2 capture is persisted as `reports/O3-ncit-doid-schema2.json` (SHA-256
+`23ee9f77cc8fb24e4b2652173f5e4b87e25b36aa4d867810113d283459e917b7`). It used the comparator
+at `7f80aa8`, pyowl-core `354da9a`, and an installed pyELK wheel built from `1a05d16`. The report
+binds all three input buffers and the frozen ROBOT 1.9.10 baseline, whose SHA-256 is
+`957831a1654c8151bbbd012cce0d0ff535622b3ad64141a84ed5109e5fc2b1a2`.
+
+The run returned 24,227 named classes, 1,406 correspondences, and exactly 2,227 unsatisfiable
+classes. Its sorted-numerator SHA-256 was
 `8dd56db2f864e757fb9fe04ca9b4cb6798e161597ff715f81175129db8bc27ab`, byte-for-byte equal to
-the frozen ROBOT 1.9.10/Java ELK oracle, and the ontology remained consistent.
+the frozen Java ELK oracle, and the ontology remained consistent. The comparator verified the
+Rust backend with 12 effective workers and hashed the loaded 1,741,904-byte `_native.abi3.so`
+as `5774b58598dbb7fbbd618b0bfc9c848983421292a6627ed7f5b423b7340b2990`. Standalone RDF/XML
+loading used pyowl-core's complete Python fallback because this wheel does not advertise the
+native RDF/XML parsing capability; this is Java-free but leaves parsing optimization open.
 
-The operator notes recorded 1,246.278 s of native reasoner time and 1,606.30 s wall, 1,870.04 s
-user CPU, and 33.64 s system CPU for the command. The frozen Java oracle took 22.47 s on its
-recorded run, so even if reproduced this would be diagnostic correctness, not performance parity.
-The observed result profile listed
-`DATATYPE`, `DATATYPE_DEFINITION`, and `OBJECT_UNION_OF_POSITIVE` as unsupported; consequently
-pyELK does not claim formal completeness for every ontology feature. Its conservative result is
-nevertheless the exact 2,227-class lower bound returned by Java ELK for this pinned task.
+The bounded worker completed in 1,162.032 s, the driver reached pre-serialization in 1,163.178 s,
+and pyELK reported 881.863 s of reasoner time. These values fail performance parity with the
+22.47 s recorded Java oracle, so the capture closes the NCIT semantic and durable-evidence gates,
+not the NCIT performance gate. No peak-RSS claim is made because the platform denied the outer
+measurement wrapper's post-child `sysctl` query; the comparator result itself completed and its
+create-only JSON was independently hash-validated.
 
-That terminal run did not retain its JSON output and predates comparison schema 2 and the
-whole-operation watchdog below. The observation is therefore unverified by a durable run
-artefact and is not release evidence. The release gate remains open until the schema-2 command
-is rerun against an identified current native wheel and its complete output, command, binary
-hash, and timings are persisted.
+The result profile lists `DATATYPE`, `DATATYPE_DEFINITION`, and
+`OBJECT_UNION_OF_POSITIVE` as unsupported. pyELK therefore does not claim formal completeness
+for every feature in the ontology; its conservative lower bound nevertheless exactly matches
+the 2,227-class Java ELK result for this pinned task.
+
+### Historical unarchived observation
+
+An earlier unbounded Java-free Python/Rust terminal run using pyELK `e9a0892` reported the same
+semantic tuple and digest. Operator notes recorded 1,246.278 s of native reasoner time and
+1,606.30 s wall, 1,870.04 s user CPU, and 33.64 s system CPU. It did not retain JSON and remains
+unverified; the current schema-2 capture above supersedes it for semantic and provenance evidence.
 
 ### Superseded blocked attempts
 
@@ -200,10 +212,10 @@ At that point the measured boundary had moved but the real-data gate was not clo
 - native pyELK NCIT classification itself now has a reproduced 600-second timeout result and needs
   performance work before the frozen 2,227-class digest can be compared.
 
-Those timeout observations remain useful performance history. The later unbounded terminal
-observation is consistent with the expected semantics, but does not replace the missing
-schema-2 release artefact. Exact-OM should still provide its already-loaded view so the
-file-loading portion is not repeated.
+Those timeout observations remain useful performance history. The current schema-2 capture
+closes the semantic and durable-evidence gaps but confirms that NCIT performance is not yet
+acceptable. Exact-OM should still provide its already-loaded view so the file-loading portion is
+not repeated.
 
 ### Cached-wire diagnostic
 

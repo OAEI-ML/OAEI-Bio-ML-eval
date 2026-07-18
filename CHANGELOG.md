@@ -12,6 +12,8 @@ Versioning for its public package and CLI contracts.
 - Zero-copy source/target composition with a canonical alignment bridge.
 - Native pyHermiT and pyELK adapters, verified-wire bounded ELK execution, and
   deterministic `coherence-provenance/1` reports.
+- A create-only NCIT–DOID schema-2 evidence capture binding the frozen baseline,
+  exact inputs, native pyELK binary, semantic digest, and bounded timings.
 - Explicit Conference-style micro and Bio-ML-style macro aggregation.
 - Python 3.10–3.14 CI, release metadata checks, an SPDX SBOM, and install/API
   documentation.
