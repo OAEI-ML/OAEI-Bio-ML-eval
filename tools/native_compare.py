@@ -104,11 +104,17 @@ def _runtime_evidence(
     reasoner_record = provenance.get("reasoner") if isinstance(provenance, Mapping) else None
     backend = reasoner_record.get("backend") if isinstance(reasoner_record, Mapping) else None
     backend_evidence = dict(backend) if isinstance(backend, Mapping) else {}
-    expected_names = {"elk": {"rust"}, "hermit": {"native", "verify"}}[reasoner]
-    accelerated = backend_evidence.get("accelerated") is True
-    if require_accelerated and (
-        not accelerated or backend_evidence.get("name") not in expected_names
-    ):
+    if reasoner == "elk":
+        accelerated = (
+            backend_evidence.get("name") == "rust"
+            and backend_evidence.get("native_available") is True
+        )
+    else:
+        accelerated = (
+            backend_evidence.get("name") in {"native", "verify"}
+            and backend_evidence.get("accelerated") is True
+        )
+    if require_accelerated and not accelerated:
         raise RuntimeError(
             f"{reasoner} release comparison requires an accelerated native backend; "
             "use --allow-python only for a diagnostic run"
@@ -131,6 +137,7 @@ def _runtime_evidence(
         }
     return {
         "accelerated_required": require_accelerated,
+        "accelerated": accelerated,
         "backend": backend_evidence,
         "native_artifact": artifact,
     }
