@@ -803,9 +803,7 @@ class TestDeferredRealDataComparison(unittest.TestCase):
 
     def test_native_release_gate_rejects_fallback_and_hashes_the_extension(self):
         fallback = {
-            "provenance": {
-                "reasoner": {"backend": {"name": "python", "accelerated": False}}
-            }
+            "provenance": {"reasoner": {"backend": {"name": "python", "accelerated": False}}}
         }
         with self.assertRaisesRegex(RuntimeError, "requires an accelerated native backend"):
             native_compare._runtime_evidence(
@@ -839,9 +837,10 @@ class TestDeferredRealDataComparison(unittest.TestCase):
                     reasoner="elk",
                     require_accelerated=True,
                 )
-        self.assertEqual(evidence["native_artifact"]["sha256"], hashlib.sha256(
-            b"current native extension"
-        ).hexdigest())
+        self.assertEqual(
+            evidence["native_artifact"]["sha256"],
+            hashlib.sha256(b"current native extension").hexdigest(),
+        )
         self.assertEqual(evidence["backend"]["effective_workers"], 12)
 
     def test_main_routes_explicit_overall_timeout_to_single_worker(self):
