@@ -7,21 +7,62 @@ committed mapping is each query's RANK-1 target from the matcher's own
 `local.test.ranked.tsv` — the matcher's committed decision, NOT the gold — in the
 `SrcEntity, TgtCandidates` list form the baselines runner writes (ranked IRI pool).
 """
+
 from __future__ import annotations
 
+import csv
+import io
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from .._rdf import rdf_api
 from ..equivalence.loaders import load_global_pairs  # the `=` set; re-exported
 from ..io import parse_list, read_tsv
 
-__all__ = ["load_committed_top1", "load_global_pairs", "load_relation_typed_correspondences"]
+__all__ = [
+    "load_committed_top1",
+    "load_global_pairs",
+    "load_relation_typed_correspondences",
+    "parse_relation_typed_tsv",
+]
 
 _RDF_SUFFIXES = {".rdf", ".xml", ".owl", ".ttl", ".n3"}
 _ALIGN_NS = "http://knowledgeweb.semanticweb.org/heterogeneity/alignment#"
 # canonicalise an OAEI relation to the bridge's vocabulary; '?' / unknown -> None (NOT asserted)
-_REL_CANON = {"": "=", "=": "=", "equivalent": "=", "equiv": "=",
-              "<": "<=", "<=": "<=", ">": ">=", ">=": ">="}
+_REL_CANON = {
+    "": "=",
+    "=": "=",
+    "equivalent": "=",
+    "equiv": "=",
+    "<": "<=",
+    "<=": "<=",
+    ">": ">=",
+    ">=": ">=",
+}
+
+
+def _relation_typed_rows(
+    rows: Iterable[Mapping[str, str]],
+) -> list[tuple[str, str, str]]:
+    out: list[tuple[str, str, str]] = []
+    for row in rows:
+        canon = _REL_CANON.get((row.get("Relation") or "=").strip())
+        if canon is not None:
+            out.append((row["SrcEntity"], row["TgtEntity"], canon))
+    return out
+
+
+def parse_relation_typed_tsv(payload: bytes) -> list[tuple[str, str, str]]:
+    """Parse exact captured UTF-8 TSV bytes without reopening an input path."""
+
+    if not isinstance(payload, bytes):
+        raise TypeError("payload must be bytes")
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError("alignment must be valid UTF-8") from error
+    rows = csv.DictReader(io.StringIO(text, newline=""), delimiter="\t")
+    return _relation_typed_rows(rows)
 
 
 def load_relation_typed_correspondences(path: str | Path) -> list[tuple[str, str, str]]:
@@ -32,12 +73,7 @@ def load_relation_typed_correspondences(path: str | Path) -> list[tuple[str, str
     the repaired reference. RDF by suffix; otherwise a TSV with a `Relation` column (default `=`).
     """
     if Path(path).suffix.lower() not in _RDF_SUFFIXES:
-        out: list[tuple[str, str, str]] = []
-        for row in read_tsv(path):
-            canon = _REL_CANON.get((row.get("Relation") or "=").strip())
-            if canon is not None:
-                out.append((row["SrcEntity"], row["TgtEntity"], canon))
-        return out
+        return _relation_typed_rows(read_tsv(path))
     graph_factory, uri_ref, rdf = rdf_api()
 
     def align(local: str) -> object:
@@ -56,7 +92,7 @@ def load_relation_typed_correspondences(path: str | Path) -> list[tuple[str, str
         if entity1 is None or entity2 is None:
             continue
         canon = _REL_CANON.get("" if relation is None else str(relation).strip())
-        if canon is not None:   # drop '?' / unknown
+        if canon is not None:  # drop '?' / unknown
             out.append((str(entity1), str(entity2), canon))
     return out
 

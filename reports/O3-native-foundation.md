@@ -5,9 +5,10 @@
 O3 now runs against the concrete public sibling contracts rather than protocol
 doubles alone. The verified local revisions are:
 
-- pyowl-core `86a73d116445e101ae196005ab50d802b451281f`;
-- pyHermiT `de061742118180594badf040206edf09822152ce`; and
-- pyELK `c076c7e5a2784c46e737a32446c22d82fdee3d4d`.
+- pyowl-core `354da9a`;
+- pyHermiT `d6196d7`; and
+- pyELK `f5c5bac`, whose reasoner code remains `e9a0892` after the authoritative
+  template-cache revert.
 
 `HermiTReasoner` retains the exact `OntologyComposite`, constructs the public
 `pyhermit.Reasoner` with a cooperative timeout, establishes consistency before
@@ -54,6 +55,7 @@ The gate compares the sorted IRI digest as well as counts and reasoner identity.
 It passes on CPython 3.10 and 3.12 for:
 
 - pyHermiT pure Python, in-process identity;
+- a locally built pyHermiT ABI3 native artifact, in-process identity;
 - pyELK pure Python, in-process identity;
 - pyELK pure Python, bounded verified-wire worker; and
 - a locally built pyELK 0.1 Rust artifact, bounded verified-wire worker.
@@ -74,7 +76,9 @@ compiler-free Python backends:
 | Gate | CPython 3.10.11 | CPython 3.12.3 |
 |---|---:|---:|
 | full Java-free unittest suite | 176 passed, 11 optional skips | 176 passed, 11 optional skips |
+| installed-native refresh (`d6196d7`) | 176 passed, 6 optional skips, 24 subtests | 176 passed, 6 optional skips, 24 subtests |
 | HermiT five-fixture exact comparator | pass | pass |
+| HermiT native-ABI3 five-fixture comparator | pass | pass |
 | ELK in-process five-fixture comparator | pass | pass |
 | ELK bounded-wire five-fixture comparator | pass | pass |
 | ELK Rust-artifact bounded comparator | pass | pass |
@@ -117,11 +121,38 @@ per-axiom conversion or reparsing, but it cannot make the sibling tableau/classi
 faster. Large-DL performance therefore remains a release gate for pyHermiT/native
 work and O5, not accepted performance evidence for this evaluator.
 
-## External real-data gate
+## External real-data gate — operator-observed diagnostic, release capture pending
 
-`tools/native_compare.py` is ready for the pinned public NCIT-DOID source, target,
-and 1,406-row alignment. It verifies all three input hashes before comparing the
-24,227-class denominator and exact 2,227-class numerator digest.
+The pinned NCIT–DOID source, target, and 1,406-row training alignment are locally available and
+match the frozen hashes:
+
+- source SHA-256 `379a37f47c0c8e7c30397769358cca955140d16b2797a1cc75da4b1fc2b354eb`;
+- target SHA-256 `76f41cce3616ad1a9ba6353f469e96bde7addba5d43e541651a3ab703f9ba2bc`;
+  and
+- alignment SHA-256 `9e417056a39996575c4409b4ea89b01dc5cc1f8962c9123975fc6594a3e089b9`.
+
+An earlier unbounded Java-free Python/Rust terminal run was operator-observed using pyowl-core
+`354da9a`, pyELK `e9a0892`, the public OAEI adapter, 12 effective workers, in-process snapshot
+identity, and zero OWL reparses. The terminal output reported 24,227 named classes, 1,406
+correspondences, and exactly 2,227 unsatisfiable classes. Its sorted-numerator SHA-256 was
+`8dd56db2f864e757fb9fe04ca9b4cb6798e161597ff715f81175129db8bc27ab`, byte-for-byte equal to
+the frozen ROBOT 1.9.10/Java ELK oracle, and the ontology remained consistent.
+
+The operator notes recorded 1,246.278 s of native reasoner time and 1,606.30 s wall, 1,870.04 s
+user CPU, and 33.64 s system CPU for the command. The frozen Java oracle took 22.47 s on its
+recorded run, so even if reproduced this would be diagnostic correctness, not performance parity.
+The observed result profile listed
+`DATATYPE`, `DATATYPE_DEFINITION`, and `OBJECT_UNION_OF_POSITIVE` as unsupported; consequently
+pyELK does not claim formal completeness for every ontology feature. Its conservative result is
+nevertheless the exact 2,227-class lower bound returned by Java ELK for this pinned task.
+
+That terminal run did not retain its JSON output and predates comparison schema 2 and the
+whole-operation watchdog below. The observation is therefore unverified by a durable run
+artefact and is not release evidence. The release gate remains open until the schema-2 command
+is rerun against an identified current native wheel and its complete output, command, binary
+hash, and timings are persisted.
+
+### Superseded blocked attempts
 
 The files became available locally on 2026-07-18 and match all three frozen hashes. The first
 attempt exposed a stale comparator call that still passed the removed `backend="native"`
@@ -160,7 +191,7 @@ file coercion, composition, adapter compatibility, and worker hand-off, then fai
 `ELKTimeoutError` because native classification exceeded its explicit 600.0-second limit. The
 outer measurement was 1,486.34 s wall, 3,306.43 s user CPU, and 377.22 s system CPU.
 
-This moves the measured boundary but does not close the real-data gate:
+At that point the measured boundary had moved but the real-data gate was not closed:
 
 - no Java path ran and the already-composed view was passed to the pyELK worker;
 - no native unsatisfiable set, count, digest, or ROBOT agreement is claimed;
@@ -169,9 +200,50 @@ This moves the measured boundary but does not close the real-data gate:
 - native pyELK NCIT classification itself now has a reproduced 600-second timeout result and needs
   performance work before the frozen 2,227-class digest can be compared.
 
-Exact-OM should continue to provide its already-loaded view so the file-loading portion is not
-repeated. The provider path cannot remove the reproduced pyELK classification timeout. The
-licensed SNOMED-scale gate remains open.
+Those timeout observations remain useful performance history. The later unbounded terminal
+observation is consistent with the expected semantics, but does not replace the missing
+schema-2 release artefact. Exact-OM should still provide its already-loaded view so the
+file-loading portion is not repeated.
+
+### Cached-wire diagnostic
+
+A separate non-public diagnostic isolated the shared-data path using the 159,392,315-byte cached
+PYOCORE image (SHA-256
+`8faa382091db5ca29867ffd9ef58483a497d69ad6d5d0ae501bb72f8d2cf3d96`). With pyowl-core
+`354da9a`, eager decode reused the rows already validated during inspection. The worker completed
+in 242.119 s: 185.165 s decode, 10.335 s pyELK compilation, 0.178 s native-IR encoding, and
+44.297 s native taxonomy. It peaked at about 1.116 GB and returned the same 2,227-class digest.
+Compared with the pre-optimization cached-wire profile, total time improved by 30.57% and decode
+time by 32.12%. This diagnostic does not replace the official public comparator; it demonstrates
+the benefit available when Exact-OM hands off an already-resident or cached shared-core view.
+
+The licensed SNOMED-scale gate remains open because its ontology files are not available on this
+runner. No SNOMED correctness or performance claim is inferred from NCIT–DOID.
+
+### Standalone whole-operation watchdog
+
+The public coherence APIs keep the normative reasoner-specific `timeout_s` contract. The
+repository-only NCIT comparator alternatively accepts `--overall-timeout` together with
+`--timeout none`: it captures and hashes the exact source, target, and alignment bytes once,
+parses those retained bytes, composes, reasons, verifies the frozen result, and serializes the
+report inside one independently terminable process. The parent receives only a bounded JSON
+result. Exceeding the outer deadline raises `ComparatorTimeoutError` and terminates then kills
+the worker if necessary; it cannot be misreported as a coherence value.
+
+This implements the previously missing bounded file-to-report mechanism without redefining
+`--timeout`, reparsing an OWL path, or weakening the snapshot-first identity API used by Exact.
+The tool rejects a numeric inner reasoner timeout in this mode: two nested process owners could
+otherwise leave a reasoner worker orphaned when the outer deadline fired. Python 3.10 and 3.12
+process tests prove a successful small response, forced termination during pre-reasoner work,
+and fail-closed rejection of that unsafe nested configuration. A real-data run must record its
+single outer limit explicitly; the mechanism does not turn a timed-out NCIT classification into
+performance acceptance.
+
+Schema 2 binds the baseline and three parsed input buffers by SHA-256, records worker and driver
+timings, embeds reasoner/core provenance, and fails closed unless the selected backend is
+accelerated. For an accelerated result it resolves and hashes the loaded private extension. The
+optional `--output` path is create-only, preventing a rerun from silently overwriting prior
+evidence.
 
 ## Reproduction
 
@@ -196,4 +268,20 @@ ruff check src/oaei_bioml_eval/coherence tests/test_coherence.py \
   tests/test_native_reasoners.py tests/test_native_reasoner_integration.py \
   tools/native_compare.py tools/native_fixture_compare.py tools/robot_oracle.py \
   benchmarks/bench_o3_foundation.py benchmarks/bench_o3_native.py
+
+PYELK_BACKEND=rust PYELK_PURE_PYTHON=0 \
+  PYTHONPATH=src:../pyOWLCore/src \
+  python tools/native_compare.py \
+  --source ../Exact-OM/data/bioml_zenodo/ncit-doid/source.owl \
+  --target ../Exact-OM/data/bioml_zenodo/ncit-doid/target.owl \
+  --alignment ../Exact-OM/data/bioml_zenodo/ncit-doid/refs/train.tsv \
+  --reasoner elk --timeout none --overall-timeout 2400 \
+  --output reports/O3-ncit-doid-schema2.json
 ```
+
+Run that command in an environment containing the built native pyELK wheel. Omitting the sibling
+pyELK source directory is intentional: it prevents that source tree, which has no compiled
+extension in-package, from shadowing the installed native wheel. `PYELK_BACKEND=rust` makes a
+missing native extension fail before reasoning, and the comparator independently rejects a
+non-accelerated result. The create-only output records the baseline, native backend, worker
+count, package version, extension hash, exact input hashes, semantic digest, and timings.

@@ -62,7 +62,7 @@ reported as locally tested.
 
 | Gate | CPython 3.10 | CPython 3.12 |
 |---|---:|---:|
-| current source suite (2026-07-18 refresh) | 179 discovered, 6 optional skips | 179 discovered, 6 optional skips |
+| installed-native suite (2026-07-18 refresh) | 176 passed, 6 optional skips, 24 subtests | 176 passed, 6 optional skips, 24 subtests |
 | full suite with RDFLib 7.6.0 | 177 passed | not locally run |
 | `metric-contract/1` | pass | pass |
 | compileall (`src`, `tools`, `tests`, `benchmarks`) | pass | pass |
@@ -104,25 +104,30 @@ figures make the present bottlenecks visible; they do not establish a speedup.
 
 ## External acceptance and deployment status
 
-The pinned NCIT-DOID source, target, and alignment are now present and all hashes match the
-frozen ROBOT evidence. The refreshed comparator first exposed and fixed a stale removed keyword.
-The pyowl-core `2c5621c` signature optimization removed the previously measured construction
-dead zone and passed the complete local 3.10/3.12 core gates. The exact installed Rust-pyELK
-rerun then completed file coercion, composition, compatibility validation, and worker hand-off,
-but native classification exceeded its own 600.0-second limit. The outer command took 1,486.34 s
-wall time. No native real-data unsatisfiable set or ROBOT digest agreement is claimed. Standalone
-pre-worker work still needs an end-to-end bound, while the separately reproduced classification
-timeout is now a pyELK performance gate. See the updated O3 report for commands, timings, and
-sibling revisions. Licensed SNOMED-scale inputs remain unavailable. The official leaderboard was
-not rerun end to end; only bounded installed deployment and scoring smokes were executed.
+The pinned NCIT-DOID source, target, and alignment are present and match the frozen ROBOT
+evidence. A retained cached-wire diagnostic returned 24,227 named classes, 1,406
+correspondences, and exactly 2,227 unsatisfiable classes with digest
+`8dd56db2f864e757fb9fe04ca9b4cb6798e161597ff715f81175129db8bc27ab`, equal to the frozen Java
+ELK result. An unarchived installed-Rust terminal run was operator-observed as returning the same
+tuple. The comparator now captures and hash-verifies the exact buffers it parses and can
+alternatively bound the complete parse/compose/reason/report worker while requiring an unbounded
+inner reasoner, which prevents a nested reasoner worker from being orphaned. However, the
+unbounded run did not retain its JSON output and predates that schema-2 capture path. The
+operator observation is not durable release evidence. A fresh run against an identified current
+native wheel must persist the schema-2 result, binary hash,
+baseline hash, command, and timings. The observed 1,246.278 s reasoner time also fails
+performance parity. See the updated O3 report for commands, stage timings, caveats, and sibling
+revisions. Licensed
+SNOMED-scale inputs remain unavailable. The official leaderboard was not rerun end to end; only
+installed deployment, scoring smokes, and diagnostic NCIT-DOID executions were performed.
 
 Accordingly, the bounded O5 implementation is complete enough to commit and hand
 off, while publication/deployment remains blocked by:
 
 1. final compatible 0.1-series sibling releases;
 2. WPR2-WPR4 native performance work and repeatable large-ontology benchmarks;
-3. bounded file-to-report preprocessing, native pyELK NCIT-scale classification, the exact
-   NCIT-DOID semantic comparison, and the licensed scale gate; and
+3. a persisted schema-2 NCIT-DOID comparison, NCIT-scale performance acceptance, and the
+   licensed SNOMED-scale gate; and
 4. an end-to-end official leaderboard dry run on the resolved release artefacts.
 
 ## Reproduction

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -219,56 +220,74 @@ def _silent_worker(connection, payload, fingerprints):
     connection.close()
 
 
+def _success_compare_worker(connection, request):
+    response = {
+        "ok": True,
+        "result": {
+            "agreement": True,
+            "reasoner": request.reasoner,
+        },
+    }
+    connection.send_bytes(json.dumps(response, sort_keys=True).encode("utf-8"))
+    connection.close()
+
+
+def _sleep_compare_worker(connection, request):
+    del request
+    time.sleep(5)
+    connection.close()
+
+
 class TestCapabilityBoundary(unittest.TestCase):
     def test_missing_reasoner_is_actionable(self):
         error = ModuleNotFoundError("no pyhermit", name="pyhermit")
-        with mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
-            side_effect=error,
-        ), self.assertRaises(NativeReasonerUnavailableError):
-            HermiTReasoner().unsatisfiable_classes_view(
-                object(), which="hermit", timeout_s=1.0
-            )
+        with (
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                side_effect=error,
+            ),
+            self.assertRaises(NativeReasonerUnavailableError),
+        ):
+            HermiTReasoner().unsatisfiable_classes_view(object(), which="hermit", timeout_s=1.0)
 
     def test_incomplete_frozen_facade_fails_without_fallback(self):
         module = types.ModuleType("pyhermit")
         module.__version__ = "0.1.0.dev0"
-        with mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
-            return_value=module,
-        ), self.assertRaisesRegex(
-            NativeReasonerCompatibilityError, "frozen public facade"
+        with (
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                return_value=module,
+            ),
+            self.assertRaisesRegex(NativeReasonerCompatibilityError, "frozen public facade"),
         ):
-            HermiTReasoner().unsatisfiable_classes_view(
-                object(), which="hermit", timeout_s=1.0
-            )
+            HermiTReasoner().unsatisfiable_classes_view(object(), which="hermit", timeout_s=1.0)
 
     def test_incompatible_reasoner_version_fails_explicitly(self):
         module = _pyhermit_module()
         module.__version__ = "0.2.0"
-        with mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
-            return_value=module,
-        ), self.assertRaisesRegex(
-            NativeReasonerCompatibilityError, "expected >=0.1,<0.2"
+        with (
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                return_value=module,
+            ),
+            self.assertRaisesRegex(NativeReasonerCompatibilityError, "expected >=0.1,<0.2"),
         ):
-            HermiTReasoner().unsatisfiable_classes_view(
-                object(), which="hermit", timeout_s=1.0
-            )
+            HermiTReasoner().unsatisfiable_classes_view(object(), which="hermit", timeout_s=1.0)
 
     def test_pyelk_uses_the_distribution_name_not_the_import_name(self):
         module = _pyelk_module()
         del module.__version__
-        with mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners.importlib.metadata.version",
-            return_value="0.1.0.dev0",
-        ) as version, mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
-            return_value=module,
+        with (
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.metadata.version",
+                return_value="0.1.0.dev0",
+            ) as version,
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                return_value=module,
+            ),
         ):
-            result = ELKReasoner().unsatisfiable_classes_view(
-                object(), which="elk", timeout_s=None
-            )
+            result = ELKReasoner().unsatisfiable_classes_view(object(), which="elk", timeout_s=None)
         version.assert_called_once_with("pyelk-reasoner")
         self.assertEqual(result.provenance["package_version"], "0.1.0.dev0")
 
@@ -301,9 +320,12 @@ class TestHermiTAdapter(unittest.TestCase):
 
     def test_both_inconsistency_forms_become_full_signature(self):
         for mode in ("inconsistent-bool", "inconsistent-error"):
-            with self.subTest(mode=mode), mock.patch(
-                "oaei_bioml_eval.coherence.native_reasoners.named_class_iris",
-                return_value=(A, B, C, D),
+            with (
+                self.subTest(mode=mode),
+                mock.patch(
+                    "oaei_bioml_eval.coherence.native_reasoners.named_class_iris",
+                    return_value=(A, B, C, D),
+                ),
             ):
                 _HermiTSession.mode = mode
                 result = self._classify()
@@ -330,9 +352,7 @@ class TestELKAdapter(unittest.TestCase):
             "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
             return_value=_pyelk_module(),
         ):
-            result = ELKReasoner().unsatisfiable_classes_view(
-                ontology, which="elk", timeout_s=None
-            )
+            result = ELKReasoner().unsatisfiable_classes_view(ontology, which="elk", timeout_s=None)
         self.assertIs(_ELKSession.last_ontology, ontology)
         self.assertEqual(result.unsatisfiable, (A, B))
         self.assertEqual(result.provenance["transport"]["mode"], "in-process-identity")
@@ -354,19 +374,21 @@ class TestELKAdapter(unittest.TestCase):
             True,
             0,
         )
-        with mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners._load_pyelk_api",
-            return_value=object(),
-        ), mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners._encode_core_wire",
-            return_value=envelope,
-        ) as encode, mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners._run_elk_worker",
-            return_value=outcome,
-        ) as worker:
-            result = ELKReasoner().unsatisfiable_classes_view(
-                ontology, which="elk", timeout_s=3.0
-            )
+        with (
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners._load_pyelk_api",
+                return_value=object(),
+            ),
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners._encode_core_wire",
+                return_value=envelope,
+            ) as encode,
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners._run_elk_worker",
+                return_value=outcome,
+            ) as worker,
+        ):
+            result = ELKReasoner().unsatisfiable_classes_view(ontology, which="elk", timeout_s=3.0)
         encode.assert_called_once_with(ontology)
         worker.assert_called_once_with(envelope, timeout_s=3.0)
         self.assertEqual(result.unsatisfiable, (A,))
@@ -377,18 +399,18 @@ class TestELKAdapter(unittest.TestCase):
     def test_bounded_call_requires_the_frozen_core_wire_api(self):
         incomplete_core = types.ModuleType("pyowl_core")
         incomplete_core.WIRE_FORMAT_VERSION = (1, 0)
-        with mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners._load_pyelk_api",
-            return_value=object(),
-        ), mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
-            return_value=incomplete_core,
-        ), self.assertRaisesRegex(
-            NativeReasonerCompatibilityError, "wire contract"
+        with (
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners._load_pyelk_api",
+                return_value=object(),
+            ),
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                return_value=incomplete_core,
+            ),
+            self.assertRaisesRegex(NativeReasonerCompatibilityError, "wire contract"),
         ):
-            ELKReasoner().unsatisfiable_classes_view(
-                object(), which="elk", timeout_s=1.0
-            )
+            ELKReasoner().unsatisfiable_classes_view(object(), which="elk", timeout_s=1.0)
 
     def test_unverified_or_reparsed_worker_result_is_rejected(self):
         envelope = CoreWireEnvelope(b"wire", {}, (1, 0), "0.1.0.dev0")
@@ -400,32 +422,36 @@ class TestELKAdapter(unittest.TestCase):
             False,
             1,
         )
-        with mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners._load_pyelk_api",
-            return_value=object(),
-        ), mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners._encode_core_wire",
-            return_value=envelope,
-        ), mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners._run_elk_worker",
-            return_value=outcome,
-        ), self.assertRaisesRegex(NativeWorkerError, "zero OWL parses"):
-            ELKReasoner().unsatisfiable_classes_view(
-                object(), which="elk", timeout_s=1.0
-            )
+        with (
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners._load_pyelk_api",
+                return_value=object(),
+            ),
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners._encode_core_wire",
+                return_value=envelope,
+            ),
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners._run_elk_worker",
+                return_value=outcome,
+            ),
+            self.assertRaisesRegex(NativeWorkerError, "zero OWL parses"),
+        ):
+            ELKReasoner().unsatisfiable_classes_view(object(), which="elk", timeout_s=1.0)
 
     def test_inconsistent_elk_result_expands_to_the_full_signature(self):
         _ELKSession.inconsistent = True
-        with mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners.named_class_iris",
-            return_value=(A, B, C, D),
-        ), mock.patch(
-            "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
-            return_value=_pyelk_module(),
+        with (
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.named_class_iris",
+                return_value=(A, B, C, D),
+            ),
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                return_value=_pyelk_module(),
+            ),
         ):
-            result = ELKReasoner().unsatisfiable_classes_view(
-                object(), which="elk", timeout_s=None
-            )
+            result = ELKReasoner().unsatisfiable_classes_view(object(), which="elk", timeout_s=None)
         self.assertTrue(result.inconsistent)
         self.assertEqual(result.unsatisfiable, (A, B, C, D))
 
@@ -435,9 +461,7 @@ class TestELKAdapter(unittest.TestCase):
             "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
             return_value=_pyelk_module(),
         ):
-            result = ELKReasoner().unsatisfiable_classes_view(
-                object(), which="elk", timeout_s=None
-            )
+            result = ELKReasoner().unsatisfiable_classes_view(object(), which="elk", timeout_s=None)
         profile = result.provenance["profile"]
         self.assertFalse(profile["complete"])
         self.assertEqual(profile["reasons"][0]["features"], ["DISJOINT_UNION"])
@@ -452,9 +476,7 @@ class TestWireWorker(unittest.TestCase):
     )
 
     def test_success_is_canonical_small_result(self):
-        result = _run_elk_worker(
-            self.envelope, timeout_s=5.0, entrypoint=_success_worker
-        )
+        result = _run_elk_worker(self.envelope, timeout_s=5.0, entrypoint=_success_worker)
         self.assertEqual(result.unsatisfiable, (A, B))
         self.assertTrue(result.wire_verified)
         self.assertEqual(result.owl_parse_count, 0)
@@ -462,16 +484,12 @@ class TestWireWorker(unittest.TestCase):
     def test_timeout_terminates_worker(self):
         started = time.perf_counter()
         with self.assertRaises(ELKTimeoutError):
-            _run_elk_worker(
-                self.envelope, timeout_s=0.05, entrypoint=_sleep_worker
-            )
+            _run_elk_worker(self.envelope, timeout_s=0.05, entrypoint=_sleep_worker)
         self.assertLess(time.perf_counter() - started, 2.0)
 
     def test_worker_exit_is_error_not_a_semantic_value(self):
         with self.assertRaises(NativeWorkerError):
-            _run_elk_worker(
-                self.envelope, timeout_s=5.0, entrypoint=_silent_worker
-            )
+            _run_elk_worker(self.envelope, timeout_s=5.0, entrypoint=_silent_worker)
 
     def test_envelope_records_the_emitted_wire_minor_not_the_capability_max(self):
         core = types.ModuleType("pyowl_core")
@@ -527,21 +545,21 @@ class _Composite:
 class TestGateAndProvenance(unittest.TestCase):
     def _score(self, hermit, elk):
         router = NativeReasoner(hermit=hermit, elk=elk)
-        with mock.patch(
-            "oaei_bioml_eval.coherence.report.load_reasoner", return_value=router
-        ), mock.patch(
-            "oaei_bioml_eval.coherence.report.compose_alignment_views",
-            side_effect=_Composite,
-        ), mock.patch(
-            "oaei_bioml_eval.coherence.report.named_class_iris",
-            return_value=(A, B),
+        with (
+            mock.patch("oaei_bioml_eval.coherence.report.load_reasoner", return_value=router),
+            mock.patch(
+                "oaei_bioml_eval.coherence.report.compose_alignment_views",
+                side_effect=_Composite,
+            ),
+            mock.patch(
+                "oaei_bioml_eval.coherence.report.named_class_iris",
+                return_value=(A, B),
+            ),
         ):
             return score_global_coherence([(A, B)], object(), object(), timeout_s=1.0)
 
     def test_timeout_only_falls_back_on_same_composite(self):
-        hermit = _RecordingAdapter(
-            error=HermiTTimeoutError("timeout", elapsed_seconds=0.5)
-        )
+        hermit = _RecordingAdapter(error=HermiTTimeoutError("timeout", elapsed_seconds=0.5))
         elk = _RecordingAdapter(result=UnsatResult((A,), "elk", 0.01))
         report = self._score(hermit, elk)
         self.assertIs(hermit.calls[0][0], elk.calls[0][0])
@@ -580,9 +598,7 @@ class TestGateAndProvenance(unittest.TestCase):
                 self.assertEqual(elk.calls, [])
 
     def test_inconsistent_result_is_one_and_versioned(self):
-        hermit = _RecordingAdapter(
-            result=UnsatResult((A, B), "hermit", 0.01, inconsistent=True)
-        )
+        hermit = _RecordingAdapter(result=UnsatResult((A, B), "hermit", 0.01, inconsistent=True))
         report = self._score(hermit, _RecordingAdapter())
         self.assertEqual(report["global_coherence"], 1.0)
         self.assertTrue(report["inconsistent"])
@@ -590,9 +606,7 @@ class TestGateAndProvenance(unittest.TestCase):
         self.assertTrue(report["provenance"]["reasoner"]["inconsistent"])
 
     def test_provenance_is_deterministic_and_contains_no_local_identity(self):
-        bridge = analyze_correspondences(
-            [(A, B), (A, B, "equiv"), (A, A)], invalid_dropped_count=2
-        )
+        bridge = analyze_correspondences([(A, B), (A, B, "equiv"), (A, A)], invalid_dropped_count=2)
         result = UnsatResult((A,), "hermit", 0.25)
         ontology = _Composite(object(), object(), bridge.correspondences)
         first = build_coherence_provenance(
@@ -625,7 +639,7 @@ class TestGateAndProvenance(unittest.TestCase):
 
 
 class TestDeferredRealDataComparison(unittest.TestCase):
-    def test_native_comparator_uses_current_file_api_without_removed_backend(self):
+    def test_native_comparator_scores_the_exact_hash_bound_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "source.owl"
@@ -633,7 +647,7 @@ class TestDeferredRealDataComparison(unittest.TestCase):
             alignment = root / "alignment.tsv"
             source.write_bytes(b"source")
             target.write_bytes(b"target")
-            alignment.write_bytes(b"alignment")
+            alignment.write_bytes(b"SrcEntity\tTgtEntity\nurn:source\turn:target\n")
             expected_report = {
                 "reasoner_used": "elk",
                 "union_class_count": 2,
@@ -644,6 +658,201 @@ class TestDeferredRealDataComparison(unittest.TestCase):
                     "result": {"numerator_sha256": "a" * 64},
                 },
             }
+            pinned_hashes = {
+                "source": native_compare.sha256_file(source),
+                "target": native_compare.sha256_file(target),
+                "alignment": native_compare.sha256_file(alignment),
+            }
+            baseline = root / "baseline.json"
+            baseline.write_text(
+                json.dumps(
+                    {
+                        "schema": "robot-oracle-ncit-doid/1",
+                        "inputs": {
+                            "source": {"sha256": pinned_hashes["source"]},
+                            "target": {"sha256": pinned_hashes["target"]},
+                            "named_class_count": 2,
+                        },
+                        "bridge": {
+                            "sha256": pinned_hashes["alignment"],
+                            "mapping_count": 1,
+                        },
+                        "runs": {
+                            "elk": {
+                                "unsatisfiable_count": 1,
+                                "unsatisfiable_sha256": "a" * 64,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            baseline_sha256 = native_compare.sha256_file(baseline)
+
+            source_view = object()
+            target_view = object()
+            captured_ontologies: list[bytes] = []
+
+            def capture_pair(source_payload, target_payload, **kwargs):
+                del kwargs
+                captured_ontologies.extend((source_payload, target_payload))
+                source.write_bytes(b"changed source")
+                target.write_bytes(b"changed target")
+                alignment.write_bytes(b"changed alignment")
+                return source_view, target_view
+
+            with (
+                mock.patch.object(
+                    native_compare,
+                    "score_reference_coherence",
+                    return_value=expected_report,
+                ) as score,
+                mock.patch.object(
+                    native_compare,
+                    "coerce_ontology_pair_once",
+                    side_effect=capture_pair,
+                ),
+                mock.patch("builtins.print") as output,
+            ):
+                result = native_compare.main(
+                    [
+                        "--source",
+                        str(source),
+                        "--target",
+                        str(target),
+                        "--alignment",
+                        str(alignment),
+                        "--baseline",
+                        str(baseline),
+                        "--reasoner",
+                        "elk",
+                        "--allow-python",
+                        "--timeout",
+                        "60",
+                    ]
+                )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(captured_ontologies, [b"source", b"target"])
+        self.assertEqual(
+            score.call_args.args,
+            ([("urn:source", "urn:target", "=")], source_view, target_view),
+        )
+        kwargs = score.call_args.kwargs
+        self.assertNotIn("backend", kwargs)
+        self.assertEqual(kwargs["reasoner"], "elk")
+        self.assertEqual(kwargs["timeout_s"], 60.0)
+        comparison = json.loads(output.call_args.args[0])
+        self.assertEqual(comparison["schema"], "oaei-bioml-eval.native-comparison/2")
+        self.assertEqual(comparison["inputs"]["source"]["sha256"], pinned_hashes["source"])
+        self.assertEqual(comparison["baseline"]["sha256"], baseline_sha256)
+        self.assertFalse(comparison["runtime"]["accelerated_required"])
+        self.assertGreaterEqual(
+            comparison["execution"]["driver_pre_serialization_elapsed_seconds"], 0.0
+        )
+
+    def test_complete_comparator_worker_returns_only_its_small_result(self):
+        request = native_compare.ComparatorRequest(
+            source=Path("source.owl"),
+            target=Path("target.owl"),
+            alignment=Path("alignment.tsv"),
+            baseline=Path("baseline.json"),
+            reasoner="elk",
+            reasoner_timeout_s=None,
+        )
+        result = native_compare.run_bounded_comparison(
+            request,
+            overall_timeout_s=5.0,
+            entrypoint=_success_compare_worker,
+        )
+        self.assertEqual(result, {"agreement": True, "reasoner": "elk"})
+
+    def test_complete_comparator_timeout_terminates_preprocessing_worker(self):
+        request = native_compare.ComparatorRequest(
+            source=Path("source.owl"),
+            target=Path("target.owl"),
+            alignment=Path("alignment.tsv"),
+            baseline=Path("baseline.json"),
+            reasoner="elk",
+            reasoner_timeout_s=None,
+        )
+        started = time.perf_counter()
+        with self.assertRaises(native_compare.ComparatorTimeoutError):
+            native_compare.run_bounded_comparison(
+                request,
+                overall_timeout_s=0.05,
+                entrypoint=_sleep_compare_worker,
+            )
+        self.assertLess(time.perf_counter() - started, 2.0)
+
+    def test_complete_comparator_rejects_a_nested_reasoner_worker(self):
+        request = native_compare.ComparatorRequest(
+            source=Path("source.owl"),
+            target=Path("target.owl"),
+            alignment=Path("alignment.tsv"),
+            baseline=Path("baseline.json"),
+            reasoner="elk",
+            reasoner_timeout_s=60.0,
+        )
+        with self.assertRaisesRegex(ValueError, "requires --timeout none"):
+            native_compare.run_bounded_comparison(
+                request,
+                overall_timeout_s=90.0,
+                entrypoint=_success_compare_worker,
+            )
+
+    def test_native_release_gate_rejects_fallback_and_hashes_the_extension(self):
+        fallback = {
+            "provenance": {
+                "reasoner": {"backend": {"name": "python", "accelerated": False}}
+            }
+        }
+        with self.assertRaisesRegex(RuntimeError, "requires an accelerated native backend"):
+            native_compare._runtime_evidence(
+                fallback,
+                reasoner="elk",
+                require_accelerated=True,
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            extension = Path(directory) / "_native.abi3.so"
+            extension.write_bytes(b"current native extension")
+            accelerated = {
+                "provenance": {
+                    "reasoner": {
+                        "backend": {
+                            "name": "rust",
+                            "accelerated": True,
+                            "native_available": True,
+                            "effective_workers": 12,
+                        }
+                    }
+                }
+            }
+            with mock.patch.object(
+                native_compare.importlib.util,
+                "find_spec",
+                return_value=types.SimpleNamespace(origin=str(extension)),
+            ):
+                evidence = native_compare._runtime_evidence(
+                    accelerated,
+                    reasoner="elk",
+                    require_accelerated=True,
+                )
+        self.assertEqual(evidence["native_artifact"]["sha256"], hashlib.sha256(
+            b"current native extension"
+        ).hexdigest())
+        self.assertEqual(evidence["backend"]["effective_workers"], 12)
+
+    def test_main_routes_explicit_overall_timeout_to_single_worker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.owl"
+            target = root / "target.owl"
+            alignment = root / "alignment.tsv"
+            source.write_bytes(b"source")
+            target.write_bytes(b"target")
+            alignment.write_bytes(b"alignment")
             baseline = root / "baseline.json"
             baseline.write_text(
                 json.dumps(
@@ -668,12 +877,16 @@ class TestDeferredRealDataComparison(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-
-            with mock.patch.object(
-                native_compare,
-                "score_reference_coherence_files",
-                return_value=expected_report,
-            ) as score, mock.patch("builtins.print"):
+            expected = {"agreement": True}
+            evidence_path = root / "comparison.json"
+            with (
+                mock.patch.object(
+                    native_compare,
+                    "run_bounded_comparison",
+                    return_value=expected,
+                ) as bounded,
+                mock.patch("builtins.print"),
+            ):
                 result = native_compare.main(
                     [
                         "--source",
@@ -684,26 +897,31 @@ class TestDeferredRealDataComparison(unittest.TestCase):
                         str(alignment),
                         "--baseline",
                         str(baseline),
+                        "--output",
+                        str(evidence_path),
                         "--reasoner",
                         "elk",
                         "--timeout",
-                        "60",
+                        "none",
+                        "--overall-timeout",
+                        "90",
                     ]
                 )
+            persisted = json.loads(evidence_path.read_text(encoding="utf-8"))
 
         self.assertEqual(result, 0)
-        kwargs = score.call_args.kwargs
-        self.assertNotIn("backend", kwargs)
-        self.assertEqual(kwargs["reasoner"], "elk")
-        self.assertEqual(kwargs["timeout_s"], 60.0)
+        request = bounded.call_args.args[0]
+        self.assertIsNone(request.reasoner_timeout_s)
+        self.assertTrue(request.require_accelerated)
+        self.assertEqual(bounded.call_args.kwargs["overall_timeout_s"], 90.0)
+        self.assertTrue(persisted["agreement"])
+        self.assertEqual(persisted["execution"]["overall_timeout_seconds"], 90.0)
 
     def test_public_ncit_doid_comparator_checks_all_frozen_semantics(self):
         baseline = json.loads(
-            (
-                Path(__file__).parent
-                / "baselines"
-                / "robot-1.9.10-ncit-doid-train.json"
-            ).read_text(encoding="utf-8")
+            (Path(__file__).parent / "baselines" / "robot-1.9.10-ncit-doid-train.json").read_text(
+                encoding="utf-8"
+            )
         )
         expected = baseline["runs"]["elk"]
         report = {
@@ -713,23 +931,34 @@ class TestDeferredRealDataComparison(unittest.TestCase):
             "unsatisfiable_count": expected["unsatisfiable_count"],
             "provenance": {
                 "schema": "coherence-provenance/1",
-                "result": {
-                    "numerator_sha256": expected["unsatisfiable_sha256"]
-                },
+                "result": {"numerator_sha256": expected["unsatisfiable_sha256"]},
             },
         }
-        comparison = compare_report(report, baseline, reasoner="elk")
+        input_evidence = {
+            "source": baseline["inputs"]["source"],
+            "target": baseline["inputs"]["target"],
+            "alignment": {"sha256": baseline["bridge"]["sha256"]},
+        }
+        comparison = compare_report(
+            report,
+            baseline,
+            reasoner="elk",
+            input_evidence=input_evidence,
+        )
         self.assertTrue(comparison["agreement"])
         changed = dict(report)
         changed["unsatisfiable_count"] = expected["unsatisfiable_count"] + 1
         with self.assertRaisesRegex(RuntimeError, "differs"):
-            compare_report(changed, baseline, reasoner="elk")
+            compare_report(
+                changed,
+                baseline,
+                reasoner="elk",
+                input_evidence=input_evidence,
+            )
 
     def test_small_fixture_comparator_covers_every_pinned_case_and_backend(self):
         baseline = json.loads(
-            (
-                Path(__file__).parent / "baselines" / "robot-1.9.10.json"
-            ).read_text(encoding="utf-8")
+            (Path(__file__).parent / "baselines" / "robot-1.9.10.json").read_text(encoding="utf-8")
         )
         for case_id, expected in baseline["cases"].items():
             for reasoner in ("hermit", "elk"):
@@ -740,11 +969,7 @@ class TestDeferredRealDataComparison(unittest.TestCase):
                         "union_class_count": len(expected["named_classes"]),
                         "unsatisfiable_count": len(unsatisfiable),
                         "provenance": {
-                            "result": {
-                                "numerator_sha256": sorted_line_sha256(
-                                    unsatisfiable
-                                )
-                            }
+                            "result": {"numerator_sha256": sorted_line_sha256(unsatisfiable)}
                         },
                     }
                     compare_case(report, expected, reasoner=reasoner)
@@ -756,15 +981,13 @@ class TestConcreteCoreProvenance(unittest.TestCase):
         assert _pyowl_core is not None
         source = _pyowl_core.coerce_snapshot(
             (
-                "Ontology(<urn:source> "
-                f"Declaration(Class(<{A}>)) Declaration(Class(<{C}>)))"
+                f"Ontology(<urn:source> Declaration(Class(<{A}>)) Declaration(Class(<{C}>)))"
             ).encode(),
             document_iri="urn:document:source",
         )
         target = _pyowl_core.coerce_snapshot(
             (
-                "Ontology(<urn:target> "
-                f"Declaration(Class(<{B}>)) Declaration(Class(<{D}>)))"
+                f"Ontology(<urn:target> Declaration(Class(<{B}>)) Declaration(Class(<{D}>)))"
             ).encode(),
             document_iri="urn:document:target",
         )
@@ -780,9 +1003,7 @@ class TestConcreteCoreProvenance(unittest.TestCase):
             timeout_s=1.0,
         )
         core = provenance["core"]
-        self.assertEqual(
-            core["fingerprints"]["logical"], composite.logical_fingerprint.hex
-        )
+        self.assertEqual(core["fingerprints"]["logical"], composite.logical_fingerprint.hex)
         self.assertEqual([item["role"] for item in core["roles"]], ["source", "target"])
         self.assertEqual(len(core["documents"]), 2)
         encoded = canonical_provenance_json(provenance)
