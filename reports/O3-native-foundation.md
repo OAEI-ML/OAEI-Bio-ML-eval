@@ -6,7 +6,8 @@ O3 now runs against the concrete public sibling contracts rather than protocol
 doubles alone. The verified local revisions are:
 
 - pyowl-core `354da9a`;
-- pyHermiT `d6196d7`; and
+- pyHermiT `11f7af0`, including the forced-native multilevel-incoherence regression
+  for the hierarchy-boundary fix in `d6196d7`; and
 - pyELK `1a05d16`, including cleared worker-local saturation workspace reuse.
 
 `HermiTReasoner` retains the exact `OntologyComposite`, constructs the public
@@ -75,7 +76,7 @@ compiler-free Python backends:
 | Gate | CPython 3.10.11 | CPython 3.12.3 |
 |---|---:|---:|
 | full Java-free unittest suite | 176 passed, 11 optional skips | 176 passed, 11 optional skips |
-| installed-native refresh (`d6196d7` / `1a05d16`) | 178 passed, 6 optional skips, 24 subtests | 178 passed, 6 optional skips, 24 subtests |
+| installed-native refresh (`11f7af0` / `1a05d16`) | 178 passed, 6 optional skips, 24 subtests | 178 passed, 6 optional skips, 24 subtests |
 | HermiT five-fixture exact comparator | pass | pass |
 | HermiT native-ABI3 five-fixture comparator | pass | pass |
 | ELK in-process five-fixture comparator | pass | pass |
