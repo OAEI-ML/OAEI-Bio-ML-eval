@@ -121,11 +121,28 @@ work and O5, not accepted performance evidence for this evaluator.
 
 `tools/native_compare.py` is ready for the pinned public NCIT-DOID source, target,
 and 1,406-row alignment. It verifies all three input hashes before comparing the
-24,227-class denominator and exact 2,227-class numerator digest. Those external
-files are not present in this workspace, so this commit does not fabricate an
-NCIT-DOID rerun or claim the licensed SNOMED-scale gate. The immutable comparator
-contract remains covered by ordinary tests. Supplying the pinned files is the only
-remaining input requirement for that manual O3/O5 evidence run.
+24,227-class denominator and exact 2,227-class numerator digest.
+
+The files became available locally on 2026-07-18 and match all three frozen hashes. The first
+attempt exposed a stale comparator call that still passed the removed `backend="native"`
+keyword; that repository-owned defect is fixed and covered by a test which invokes the current
+file API and rejects reintroduction of the removed option.
+
+A second Java-free attempt requested ELK with a 600-second bound using pyowl-core `47a6695`,
+pyELK `2411c10`, and its available Rust backend. It was stopped after exceeding the intended
+bounded window without reaching composition or either reasoner. The interrupt traceback was
+still inside construction of the **source** `OntologySnapshot`, specifically signature gathering
+and structural-node canonical equality. Consequently:
+
+- no ontology was parsed twice and no Java path ran;
+- no native unsatisfiable set, count, digest, or semantic agreement is claimed;
+- the reasoner timeout could not help because ontology coercion occurs before the timed
+  classification boundary; and
+- file-to-report preprocessing needs its own measured/bounded scale gate (or callers must supply
+  a preloaded snapshot provider) before this standalone release command is acceptable.
+
+The snapshot/provider API remains the preferred Exact-OM integration path and avoids this file
+wrapper load when Exact already owns the view. The licensed SNOMED-scale gate also remains open.
 
 ## Reproduction
 

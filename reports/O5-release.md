@@ -62,7 +62,7 @@ reported as locally tested.
 
 | Gate | CPython 3.10 | CPython 3.12 |
 |---|---:|---:|
-| full Java-free unit suite | 171 passed, 6 RDF-only skips | 171 passed, 6 RDF-only skips |
+| current source suite (2026-07-18 refresh) | 179 discovered, 6 optional skips | 179 discovered, 6 optional skips |
 | full suite with RDFLib 7.6.0 | 177 passed | not locally run |
 | `metric-contract/1` | pass | pass |
 | compileall (`src`, `tools`, `tests`, `benchmarks`) | pass | pass |
@@ -104,9 +104,14 @@ figures make the present bottlenecks visible; they do not establish a speedup.
 
 ## External acceptance and deployment status
 
-The pinned NCIT-DOID inputs are absent from this workspace, and licensed
-SNOMED-scale inputs are unavailable. No real-data or SNOMED-scale pass is
-claimed. The official leaderboard was not rerun end to end; only bounded installed
+The pinned NCIT-DOID source, target, and alignment are now present and all hashes match the
+frozen ROBOT evidence. The refreshed comparator first exposed and fixed a stale removed keyword.
+Its subsequent Rust-pyELK attempt did not reach the reasoner: after exceeding the intended
+600-second operational window it was interrupted while pyowl-core was still constructing the
+source snapshot signature. The reasoner timeout begins later, so it does not bound standalone
+file loading or preprocessing. No native real-data semantic result is claimed. See the updated
+O3 report for the exact boundary and sibling revisions. Licensed SNOMED-scale inputs remain
+unavailable. The official leaderboard was not rerun end to end; only bounded installed
 deployment and scoring smokes were executed.
 
 Accordingly, the bounded O5 implementation is complete enough to commit and hand
@@ -114,7 +119,8 @@ off, while publication/deployment remains blocked by:
 
 1. final compatible 0.1-series sibling releases;
 2. WPR2-WPR4 native performance work and repeatable large-ontology benchmarks;
-3. pinned NCIT-DOID semantic comparison and the licensed scale gate; and
+3. bounded file-to-report preprocessing, the NCIT-DOID semantic comparison, and the licensed
+   scale gate; and
 4. an end-to-end official leaderboard dry run on the resolved release artefacts.
 
 ## Reproduction

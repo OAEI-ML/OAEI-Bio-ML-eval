@@ -17,6 +17,12 @@ class TestJavaFreeRuntime(unittest.TestCase):
     def test_installable_modules_have_no_java_runtime_imports(self) -> None:
         violations: list[str] = []
         for path in sorted(SOURCE.rglob("*.py")):
+            relative = path.relative_to(SOURCE)
+            if any(not part.isidentifier() for part in (*relative.parts[:-1], path.stem)):
+                # Hatch excludes non-module conflict copies (for example
+                # ``reasoner 2.py``).  They are local files, not installable
+                # package modules, and must not weaken the scan of real code.
+                continue
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
@@ -31,6 +37,11 @@ class TestJavaFreeRuntime(unittest.TestCase):
                         f"{path.relative_to(ROOT)}:{node.lineno}: {sorted(forbidden)}"
                     )
         self.assertEqual(violations, [])
+
+    def test_non_module_conflict_copies_are_excluded_from_artifacts(self) -> None:
+        metadata = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('exclude = ["**/* 2.*"]', metadata)
+        self.assertIn('exclude = "(^|/).* 2\\\\.[^/]+$"', metadata)
 
     def test_legacy_reasoner_types_are_not_installable(self) -> None:
         reasoner = (SOURCE / "coherence" / "reasoner.py").read_text(

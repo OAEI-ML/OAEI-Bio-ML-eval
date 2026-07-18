@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import time
 import types
 import unittest
@@ -35,6 +36,7 @@ from oaei_bioml_eval.coherence.provenance import (
 )
 from oaei_bioml_eval.coherence.reasoner import CoherenceReasoner, UnsatResult
 from oaei_bioml_eval.coherence.report import score_global_coherence
+from tools import native_compare
 from tools.native_compare import compare_report
 from tools.native_fixture_compare import compare_case
 
@@ -623,6 +625,78 @@ class TestGateAndProvenance(unittest.TestCase):
 
 
 class TestDeferredRealDataComparison(unittest.TestCase):
+    def test_native_comparator_uses_current_file_api_without_removed_backend(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.owl"
+            target = root / "target.owl"
+            alignment = root / "alignment.tsv"
+            source.write_bytes(b"source")
+            target.write_bytes(b"target")
+            alignment.write_bytes(b"alignment")
+            expected_report = {
+                "reasoner_used": "elk",
+                "union_class_count": 2,
+                "asserted_correspondences": 1,
+                "unsatisfiable_count": 1,
+                "provenance": {
+                    "schema": "coherence-provenance/1",
+                    "result": {"numerator_sha256": "a" * 64},
+                },
+            }
+            baseline = root / "baseline.json"
+            baseline.write_text(
+                json.dumps(
+                    {
+                        "schema": "robot-oracle-ncit-doid/1",
+                        "inputs": {
+                            "source": {"sha256": native_compare.sha256_file(source)},
+                            "target": {"sha256": native_compare.sha256_file(target)},
+                            "named_class_count": 2,
+                        },
+                        "bridge": {
+                            "sha256": native_compare.sha256_file(alignment),
+                            "mapping_count": 1,
+                        },
+                        "runs": {
+                            "elk": {
+                                "unsatisfiable_count": 1,
+                                "unsatisfiable_sha256": "a" * 64,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(
+                native_compare,
+                "score_reference_coherence_files",
+                return_value=expected_report,
+            ) as score, mock.patch("builtins.print"):
+                result = native_compare.main(
+                    [
+                        "--source",
+                        str(source),
+                        "--target",
+                        str(target),
+                        "--alignment",
+                        str(alignment),
+                        "--baseline",
+                        str(baseline),
+                        "--reasoner",
+                        "elk",
+                        "--timeout",
+                        "60",
+                    ]
+                )
+
+        self.assertEqual(result, 0)
+        kwargs = score.call_args.kwargs
+        self.assertNotIn("backend", kwargs)
+        self.assertEqual(kwargs["reasoner"], "elk")
+        self.assertEqual(kwargs["timeout_s"], 60.0)
+
     def test_public_ncit_doid_comparator_checks_all_frozen_semantics(self):
         baseline = json.loads(
             (

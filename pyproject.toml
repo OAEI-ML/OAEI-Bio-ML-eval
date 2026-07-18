@@ -62,6 +62,12 @@ oaei-bioml-coherence-score = "oaei_bioml_eval.coherence.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/oaei_bioml_eval"]
 
+# Finder/IDE conflict copies such as ``module 2.py`` are not importable Python
+# modules and must never leak into a wheel or source distribution.  Keep this
+# artifact rule independent of local ignore state so release builds remain clean.
+[tool.hatch.build]
+exclude = ["**/* 2.*"]
+
 [tool.hatch.build.targets.sdist]
 include = [
   "/CHANGELOG.md",
@@ -78,6 +84,7 @@ include = [
 [tool.ruff]
 target-version = "py310"
 line-length = 100
+exclude = ["**/* 2.*"]
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
@@ -86,6 +93,7 @@ ignore = ["E501"]
 [tool.mypy]
 python_version = "3.10"
 files = ["src"]
+exclude = "(^|/).* 2\\.[^/]+$"
 strict = true
 warn_unreachable = true
 show_error_codes = true

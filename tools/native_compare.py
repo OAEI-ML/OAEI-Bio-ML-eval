@@ -132,7 +132,6 @@ def main(argv: list[str] | None = None) -> int:
         args.target,
         reasoner=args.reasoner,
         timeout_s=args.timeout,
-        backend="native",
         source_document_iri="urn:oaei:ncit",
         target_document_iri="urn:oaei:doid",
     )

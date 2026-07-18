@@ -23,6 +23,10 @@ Versioning for its public package and CLI contracts.
 - Alignment TSV terminology is implementation-neutral.
 - `reasoner` now installs compatible `pyowl-core`, `pyHermiT`, and
   `pyelk-reasoner` versions; `all` combines the RDF and reasoner extras.
+- The NCIT–DOID comparator now calls the current native file API; a regression test prevents the
+  removed `backend` option from returning.
+- Build and quality-tool configuration excludes non-module Finder/IDE conflict copies from
+  release artifacts while leaving local user files untouched.
 
 ### Removed
 
