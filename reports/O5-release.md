@@ -106,21 +106,23 @@ figures make the present bottlenecks visible; they do not establish a speedup.
 
 The pinned NCIT-DOID source, target, and alignment are now present and all hashes match the
 frozen ROBOT evidence. The refreshed comparator first exposed and fixed a stale removed keyword.
-Its subsequent Rust-pyELK attempt did not reach the reasoner: after exceeding the intended
-600-second operational window it was interrupted while pyowl-core was still constructing the
-source snapshot signature. The reasoner timeout begins later, so it does not bound standalone
-file loading or preprocessing. No native real-data semantic result is claimed. See the updated
-O3 report for the exact boundary and sibling revisions. Licensed SNOMED-scale inputs remain
-unavailable. The official leaderboard was not rerun end to end; only bounded installed
-deployment and scoring smokes were executed.
+The pyowl-core `2c5621c` signature optimization removed the previously measured construction
+dead zone and passed the complete local 3.10/3.12 core gates. The exact installed Rust-pyELK
+rerun then completed file coercion, composition, compatibility validation, and worker hand-off,
+but native classification exceeded its own 600.0-second limit. The outer command took 1,486.34 s
+wall time. No native real-data unsatisfiable set or ROBOT digest agreement is claimed. Standalone
+pre-worker work still needs an end-to-end bound, while the separately reproduced classification
+timeout is now a pyELK performance gate. See the updated O3 report for commands, timings, and
+sibling revisions. Licensed SNOMED-scale inputs remain unavailable. The official leaderboard was
+not rerun end to end; only bounded installed deployment and scoring smokes were executed.
 
 Accordingly, the bounded O5 implementation is complete enough to commit and hand
 off, while publication/deployment remains blocked by:
 
 1. final compatible 0.1-series sibling releases;
 2. WPR2-WPR4 native performance work and repeatable large-ontology benchmarks;
-3. bounded file-to-report preprocessing, the NCIT-DOID semantic comparison, and the licensed
-   scale gate; and
+3. bounded file-to-report preprocessing, native pyELK NCIT-scale classification, the exact
+   NCIT-DOID semantic comparison, and the licensed scale gate; and
 4. an end-to-end official leaderboard dry run on the resolved release artefacts.
 
 ## Reproduction

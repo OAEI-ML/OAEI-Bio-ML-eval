@@ -144,6 +144,35 @@ and structural-node canonical equality. Consequently:
 The snapshot/provider API remains the preferred Exact-OM integration path and avoids this file
 wrapper load when Exact already owns the view. The licensed SNOMED-scale gate also remains open.
 
+The shared-core hot path was then corrected in pyowl-core `2c5621c`: signature collection now
+deduplicates entity `(kind, IRI)` identities across all roots before canonical encoding, and the
+signature fingerprint deduplicates encoded bytes rather than structurally hashing entities. A
+100,000-root duplicate-heavy comparison retained byte-identical output and reduced this phase
+from 7.610 s to 1.124 s (6.77 times faster). Full pyowl-core 3.10/3.12 suites and type/lint gates
+passed.
+
+The first post-fix source-checkout run reached the pyELK adapter in 345.27 s, proving that the old
+signature boundary was removed, but correctly failed because a bare `PYTHONPATH` checkout has no
+installed `pyelk-reasoner` distribution metadata. That invocation is not semantic evidence. The
+exact command was repeated with the existing installed pyELK 0.1-series environment, the same
+native extension, all three pinned input hashes, and `PYELK_BACKEND=rust`. This valid run completed
+file coercion, composition, adapter compatibility, and worker hand-off, then failed with
+`ELKTimeoutError` because native classification exceeded its explicit 600.0-second limit. The
+outer measurement was 1,486.34 s wall, 3,306.43 s user CPU, and 377.22 s system CPU.
+
+This moves the measured boundary but does not close the real-data gate:
+
+- no Java path ran and the already-composed view was passed to the pyELK worker;
+- no native unsatisfiable set, count, digest, or ROBOT agreement is claimed;
+- standalone pre-worker work still lacks its own end-to-end timeout and took the remainder of the
+  outer wall window; and
+- native pyELK NCIT classification itself now has a reproduced 600-second timeout result and needs
+  performance work before the frozen 2,227-class digest can be compared.
+
+Exact-OM should continue to provide its already-loaded view so the file-loading portion is not
+repeated. The provider path cannot remove the reproduced pyELK classification timeout. The
+licensed SNOMED-scale gate remains open.
+
 ## Reproduction
 
 ```text
