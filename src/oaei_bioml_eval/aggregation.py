@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
 AverageMode = Literal["micro", "macro"]
 AVERAGE_MODES: tuple[AverageMode, ...] = ("micro", "macro")
@@ -13,7 +13,7 @@ def validate_average(value: str) -> AverageMode:
     if value not in AVERAGE_MODES:
         choices = ", ".join(AVERAGE_MODES)
         raise ValueError(f"average must be one of {choices}; got {value!r}")
-    return value
+    return cast(AverageMode, value)
 
 
 def weighted_mean(weighted_values: list[tuple[float, float]]) -> float:
