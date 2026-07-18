@@ -7,8 +7,8 @@ doubles alone. The verified local revisions are:
 
 - pyowl-core `354da9a`;
 - pyHermiT `d6196d7`; and
-- pyELK `f5c5bac`, whose reasoner code remains `e9a0892` after the authoritative
-  template-cache revert.
+- pyELK `1a05d16`, including cleared worker-local saturation workspace reuse;
+  the authoritative NCIT semantic run below remains tied to `e9a0892`.
 
 `HermiTReasoner` retains the exact `OntologyComposite`, constructs the public
 `pyhermit.Reasoner` with a cooperative timeout, establishes consistency before
@@ -76,7 +76,7 @@ compiler-free Python backends:
 | Gate | CPython 3.10.11 | CPython 3.12.3 |
 |---|---:|---:|
 | full Java-free unittest suite | 176 passed, 11 optional skips | 176 passed, 11 optional skips |
-| installed-native refresh (`d6196d7`) | 176 passed, 6 optional skips, 24 subtests | 176 passed, 6 optional skips, 24 subtests |
+| installed-native refresh (`d6196d7` / `1a05d16`) | 178 passed, 6 optional skips, 24 subtests | 178 passed, 6 optional skips, 24 subtests |
 | HermiT five-fixture exact comparator | pass | pass |
 | HermiT native-ABI3 five-fixture comparator | pass | pass |
 | ELK in-process five-fixture comparator | pass | pass |

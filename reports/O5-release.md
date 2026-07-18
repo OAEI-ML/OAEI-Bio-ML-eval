@@ -62,7 +62,7 @@ reported as locally tested.
 
 | Gate | CPython 3.10 | CPython 3.12 |
 |---|---:|---:|
-| installed-native suite (2026-07-18 refresh) | 176 passed, 6 optional skips, 24 subtests | 176 passed, 6 optional skips, 24 subtests |
+| installed-native suite (2026-07-18 refresh) | 178 passed, 6 optional skips, 24 subtests | 178 passed, 6 optional skips, 24 subtests |
 | full suite with RDFLib 7.6.0 | 177 passed | not locally run |
 | `metric-contract/1` | pass | pass |
 | compileall (`src`, `tools`, `tests`, `benchmarks`) | pass | pass |
