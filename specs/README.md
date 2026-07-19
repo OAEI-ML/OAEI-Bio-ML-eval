@@ -5,6 +5,11 @@ record for the implemented 0.2.0 native shared-OWL migration. Current user-facin
 behavior is documented in the root README and `docs/`; work-package evidence is
 kept in `reports/`.
 
+[`0.2.x-encoded-reasoner-compatibility.md`](0.2.x-encoded-reasoner-compatibility.md) is the
+successor compatibility/performance plan for pyowl-core encoded views and the updated native
+reasoners. It deliberately keeps buffer decoding inside pyELK/pyHermiT and does not change metric
+semantics.
+
 ## Release intent
 
 `0.2.0` has three independent promises:
