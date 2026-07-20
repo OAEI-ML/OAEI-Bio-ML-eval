@@ -66,3 +66,9 @@ wire versions, role manifests and fingerprints, import diagnostics, bridge and
 result digests, requested/actual reasoner, package/backend versions, profile
 completeness, transport, elapsed time, timeout, and fallback attempts. Semantic
 digests exclude paths, credentials, timestamps, and object IDs.
+
+When the public reasoner facade supplies compiler diagnostics, `compiler_handoff`
+also records its selected ingestion path, canonical compiler digest, compiler-cache
+schema, private-IR schema, native ABI version, and the bounded copy/ownership counters
+that are actually available. Missing diagnostics stay absent; the evaluator neither
+infers acceleration from a package version nor fabricates zero counters.

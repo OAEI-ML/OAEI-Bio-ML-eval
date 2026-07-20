@@ -33,6 +33,13 @@ _COMPILER_COUNTERS = frozenset(
         "encoded_compiler_gil_released",
     }
 )
+_COMPILER_SCHEMA_FIELDS = frozenset(
+    {
+        "compiler_cache_schema_version",
+        "ir_schema_version",
+        "native_abi_version",
+    }
+)
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -192,7 +199,8 @@ def _compiler_handoff(
 
 
 def _bounded_compiler_diagnostics(values: Mapping[str, object]) -> dict[str, object]:
-    if set(values) - {"ingestion_path", "compiler_digest", "counters"}:
+    allowed = {"ingestion_path", "compiler_digest", "counters", *_COMPILER_SCHEMA_FIELDS}
+    if set(values) - allowed:
         raise TypeError("reasoner compiler diagnostics contain unsupported fields")
     ingestion_path = values.get("ingestion_path")
     if ingestion_path not in _INGESTION_PATHS:
@@ -203,6 +211,16 @@ def _bounded_compiler_diagnostics(values: Mapping[str, object]) -> dict[str, obj
         if not isinstance(compiler_digest, str) or _SHA256.fullmatch(compiler_digest) is None:
             raise TypeError("reasoner compiler digest must be lowercase SHA-256")
         result["compiler_digest"] = compiler_digest
+    for name in sorted(_COMPILER_SCHEMA_FIELDS):
+        if name not in values:
+            continue
+        value = values[name]
+        if name == "native_abi_version" and isinstance(value, str):
+            if not value:
+                raise TypeError("reasoner native ABI version must be nonempty")
+        elif isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise TypeError(f"reasoner compiler diagnostic {name} must be positive")
+        result[name] = value
     counters = values.get("counters")
     if counters is None:
         return result

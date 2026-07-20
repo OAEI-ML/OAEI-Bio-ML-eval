@@ -87,6 +87,13 @@ _COMPILER_COUNTERS = frozenset(
         "encoded_compiler_gil_released",
     }
 )
+_COMPILER_SCHEMA_FIELDS = frozenset(
+    {
+        "compiler_cache_schema_version",
+        "ir_schema_version",
+        "native_abi_version",
+    }
+)
 _MISSING = object()
 
 JsonValue: TypeAlias = object
@@ -550,6 +557,20 @@ def _compiler_diagnostics(session: Any) -> dict[str, JsonValue] | None:
                 "native Reasoner compiler_digest diagnostic must be lowercase SHA-256"
             )
         result["compiler_digest"] = compiler_digest
+    for name in sorted(_COMPILER_SCHEMA_FIELDS):
+        if name not in values:
+            continue
+        value = values[name]
+        if name == "native_abi_version" and isinstance(value, str):
+            if not value:
+                raise NativeReasonerCompatibilityError(
+                    "native Reasoner native_abi_version diagnostic must be nonempty"
+                )
+        elif isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise NativeReasonerCompatibilityError(
+                f"native Reasoner {name} diagnostic must be a positive integer"
+            )
+        result[name] = value
     counters: dict[str, int | bool] = {}
     for name in sorted(_COMPILER_COUNTERS):
         if name not in values:

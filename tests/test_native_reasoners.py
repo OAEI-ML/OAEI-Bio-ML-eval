@@ -333,6 +333,9 @@ class TestCapabilityBoundary(unittest.TestCase):
             diagnostics=lambda: {
                 "ingestion_path": "encoded-native",
                 "compiler_digest": "a" * 64,
+                "compiler_cache_schema_version": 2,
+                "ir_schema_version": 3,
+                "native_abi_version": 4,
                 "encoded_buffer_count": 11,
                 "encoded_staging_copy_bytes": 0,
                 "encoded_compiler_gil_released": True,
@@ -347,6 +350,9 @@ class TestCapabilityBoundary(unittest.TestCase):
             {
                 "ingestion_path": "encoded-native",
                 "compiler_digest": "a" * 64,
+                "compiler_cache_schema_version": 2,
+                "ir_schema_version": 3,
+                "native_abi_version": 4,
                 "counters": {
                     "encoded_buffer_count": 11,
                     "encoded_compiler_gil_released": True,
@@ -362,6 +368,9 @@ class TestCapabilityBoundary(unittest.TestCase):
             {"ingestion_path": "private-native"},
             {"ingestion_path": "encoded-native", "compiler_digest": "/private/tmp"},
             {"ingestion_path": "encoded-native", "encoded_buffer_count": True},
+            {"ingestion_path": "encoded-native", "compiler_cache_schema_version": True},
+            {"ingestion_path": "encoded-native", "ir_schema_version": 0},
+            {"ingestion_path": "encoded-native", "native_abi_version": ""},
             {
                 "ingestion_path": "encoded-native",
                 "encoded_compiler_gil_released": 1,
@@ -536,6 +545,9 @@ class TestELKAdapter(unittest.TestCase):
         diagnostics = {
             "ingestion_path": "encoded-native",
             "compiler_digest": "c" * 64,
+            "compiler_cache_schema_version": 2,
+            "ir_schema_version": 3,
+            "native_abi_version": "pyelk-native/1",
             "encoded_buffer_count": 11,
             "encoded_staging_copy_bytes": 0,
         }
@@ -560,6 +572,9 @@ class TestELKAdapter(unittest.TestCase):
             {
                 "ingestion_path": "encoded-native",
                 "compiler_digest": "c" * 64,
+                "compiler_cache_schema_version": 2,
+                "ir_schema_version": 3,
+                "native_abi_version": "pyelk-native/1",
                 "counters": {
                     "encoded_buffer_count": 11,
                     "encoded_staging_copy_bytes": 0,
@@ -1034,6 +1049,9 @@ class TestGateAndProvenance(unittest.TestCase):
                         "compiler_diagnostics": {
                             "ingestion_path": "encoded-native",
                             "compiler_digest": "b" * 64,
+                            "compiler_cache_schema_version": 2,
+                            "ir_schema_version": 3,
+                            "native_abi_version": 4,
                             "counters": {
                                 "encoded_buffer_count": 11,
                                 "encoded_staging_copy_bytes": 0,
@@ -1054,6 +1072,9 @@ class TestGateAndProvenance(unittest.TestCase):
         self.assertEqual(handoff["reasoner_ir_schema_version"], 1)
         self.assertEqual(handoff["ingestion_path"], "encoded-native")
         self.assertEqual(handoff["compiler_digest"], "b" * 64)
+        self.assertEqual(handoff["compiler_cache_schema_version"], 2)
+        self.assertEqual(handoff["ir_schema_version"], 3)
+        self.assertEqual(handoff["native_abi_version"], 4)
         self.assertEqual(
             handoff["counters"],
             {"encoded_buffer_count": 11, "encoded_staging_copy_bytes": 0},
@@ -1081,6 +1102,34 @@ class TestGateAndProvenance(unittest.TestCase):
                 requested_reasoner="elk",
                 timeout_s=None,
             )
+
+    def test_compiler_handoff_rejects_malformed_public_schema_diagnostics(self):
+        for name, value in (
+            ("compiler_cache_schema_version", True),
+            ("ir_schema_version", 0),
+            ("native_abi_version", ""),
+        ):
+            with self.subTest(name=name), self.assertRaisesRegex(TypeError, "must be"):
+                build_coherence_provenance(
+                    object(),
+                    analyze_correspondences([]),
+                    (),
+                    UnsatResult(
+                        (),
+                        "elk",
+                        0.1,
+                        provenance={
+                            "backend": {
+                                "compiler_diagnostics": {
+                                    "ingestion_path": "encoded-native",
+                                    name: value,
+                                }
+                            }
+                        },
+                    ),
+                    requested_reasoner="elk",
+                    timeout_s=None,
+                )
 
     def test_malformed_core_schema_advertisement_is_not_silently_normalized(self):
         bridge = analyze_correspondences([])
