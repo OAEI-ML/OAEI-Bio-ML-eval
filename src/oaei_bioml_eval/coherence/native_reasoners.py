@@ -34,6 +34,7 @@ _VERSION = re.compile(
     r"^(\d+)\.(\d+)\.(\d+)"
     r"(?:(?:a|b|rc)\d+|(?:\.dev|\.post)\d+|[.+-].*)?$"
 )
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _EXPECTED_REASONER_LINE = (0, 1)
 _MAX_WORKER_RESPONSE_BYTES = 16 * 1024 * 1024
 _WORKER_SHUTDOWN_SECONDS = 1.0
@@ -66,6 +67,22 @@ _COMPILER_HANDOFF_FIELDS = frozenset(
         "model_schema",
         "schema_name",
         "schema_version",
+    }
+)
+_INGESTION_PATHS = frozenset({"scalar-python", "scalar-native", "scalar-wire", "encoded-native"})
+_COMPILER_COUNTERS = frozenset(
+    {
+        "encoded_buffer_count",
+        "encoded_buffer_bytes",
+        "encoded_zero_copy_buffers",
+        "encoded_detached_buffer_count",
+        "encoded_indexed_buffer_count",
+        "encoded_staging_copy_bytes",
+        "encoded_private_ir_bytes",
+        "encoded_segment_count",
+        "encoded_referenced_view_count",
+        "encoded_posting_bytes",
+        "encoded_compiler_gil_released",
     }
 )
 _MISSING = object()
@@ -489,7 +506,60 @@ def _backend_metadata(session: Any, package_version: str) -> dict[str, JsonValue
     compiler_handoff = getattr(backend, "compiler_handoff", _MISSING)
     if compiler_handoff is not _MISSING:
         metadata["compiler_handoff"] = _validate_compiler_handoff(compiler_handoff)
+    compiler_diagnostics = _compiler_diagnostics(session)
+    if compiler_diagnostics is not None:
+        metadata["compiler_diagnostics"] = compiler_diagnostics
     return metadata
+
+
+def _compiler_diagnostics(session: Any) -> dict[str, JsonValue] | None:
+    """Capture only frozen public compiler diagnostics from a reasoner facade."""
+
+    provider = getattr(session, "diagnostics", None)
+    if provider is None:
+        return None
+    if not callable(provider):
+        raise NativeReasonerCompatibilityError(
+            "native Reasoner diagnostics must be callable when present"
+        )
+    values = provider()
+    if not isinstance(values, Mapping) or not all(isinstance(name, str) for name in values):
+        raise NativeReasonerCompatibilityError(
+            "native Reasoner diagnostics must be a string-keyed mapping"
+        )
+    ingestion_path = values.get("ingestion_path")
+    if ingestion_path is None:
+        return None
+    if ingestion_path not in _INGESTION_PATHS:
+        raise NativeReasonerCompatibilityError(
+            "native Reasoner ingestion_path diagnostic is incompatible"
+        )
+    result: dict[str, JsonValue] = {"ingestion_path": ingestion_path}
+    compiler_digest = values.get("compiler_digest")
+    if compiler_digest is not None:
+        if not isinstance(compiler_digest, str) or _SHA256.fullmatch(compiler_digest) is None:
+            raise NativeReasonerCompatibilityError(
+                "native Reasoner compiler_digest diagnostic must be lowercase SHA-256"
+            )
+        result["compiler_digest"] = compiler_digest
+    counters: dict[str, int | bool] = {}
+    for name in sorted(_COMPILER_COUNTERS):
+        if name not in values:
+            continue
+        value = values[name]
+        if name == "encoded_compiler_gil_released":
+            if not isinstance(value, bool):
+                raise NativeReasonerCompatibilityError(
+                    "native Reasoner encoded_compiler_gil_released diagnostic must be bool"
+                )
+        elif isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise NativeReasonerCompatibilityError(
+                f"native Reasoner {name} diagnostic must be a nonnegative integer"
+            )
+        counters[name] = value
+    if counters:
+        result["counters"] = counters
+    return result
 
 
 def _validate_compiler_handoff(value: object) -> dict[str, JsonValue]:

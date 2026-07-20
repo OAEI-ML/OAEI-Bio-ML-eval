@@ -6,6 +6,7 @@ import hashlib
 import importlib
 import json
 import platform
+import re
 from collections.abc import Iterable, Mapping
 
 from .. import __version__ as OAEI_VERSION
@@ -14,6 +15,25 @@ from .reasoner import UnsatResult
 
 PROVENANCE_SCHEMA = "coherence-provenance/1"
 METRIC_METHODOLOGY = "oaei-bioml-coherence/1"
+_INGESTION_PATHS = frozenset(
+    {"scalar-python", "scalar-native", "scalar-wire", "encoded-native"}
+)
+_COMPILER_COUNTERS = frozenset(
+    {
+        "encoded_buffer_count",
+        "encoded_buffer_bytes",
+        "encoded_zero_copy_buffers",
+        "encoded_detached_buffer_count",
+        "encoded_indexed_buffer_count",
+        "encoded_staging_copy_bytes",
+        "encoded_private_ir_bytes",
+        "encoded_segment_count",
+        "encoded_referenced_view_count",
+        "encoded_posting_bytes",
+        "encoded_compiler_gil_released",
+    }
+)
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 def build_coherence_provenance(
@@ -31,8 +51,13 @@ def build_coherence_provenance(
     denominator_values = tuple(sorted(set(denominator)))
     numerator_values = tuple(sorted(set(result.unsatisfiable)))
     core = _core_metadata(ontology)
-    compiler_handoff = _core_compiler_handoff(ontology)
     reasoner_details = _json_mapping(result.provenance)
+    compiler_handoff = _compiler_handoff(
+        ontology,
+        requested_reasoner=requested_reasoner,
+        selected_reasoner=result.reasoner_used,
+        reasoner_details=reasoner_details,
+    )
     profile = _json_mapping(reasoner_details.get("profile"))
     transport = reasoner_details.get("transport", "in-process-identity")
     if isinstance(transport, Mapping):
@@ -128,6 +153,73 @@ def _core_compiler_handoff(ontology: object) -> dict[str, object]:
         "owner_kind": owner_kind,
         "storage_kind": storage_kind,
     }
+
+
+def _compiler_handoff(
+    ontology: object,
+    *,
+    requested_reasoner: str,
+    selected_reasoner: str,
+    reasoner_details: Mapping[str, object],
+) -> dict[str, object]:
+    """Extend core handoff provenance with public reasoner diagnostics."""
+
+    result = _core_compiler_handoff(ontology)
+
+    result["requested_reasoner"] = requested_reasoner
+    result["selected_reasoner"] = selected_reasoner
+    package_version = reasoner_details.get("package_version")
+    if isinstance(package_version, str) and package_version:
+        result["reasoner_package_version"] = package_version
+    backend = reasoner_details.get("backend")
+    if not isinstance(backend, Mapping):
+        return result
+    for source, target in (
+        ("name", "selected_backend"),
+        ("implementation_version", "implementation_version"),
+        ("ir_schema_version", "reasoner_ir_schema_version"),
+    ):
+        value = backend.get(source)
+        if isinstance(value, (str, int)) and not isinstance(value, bool):
+            result[target] = value
+    schema = backend.get("compiler_handoff")
+    if isinstance(schema, Mapping):
+        result["reasoner_encoded_schema"] = _json_mapping(schema)
+    diagnostics = backend.get("compiler_diagnostics")
+    if isinstance(diagnostics, Mapping):
+        result.update(_bounded_compiler_diagnostics(diagnostics))
+    return result
+
+
+def _bounded_compiler_diagnostics(values: Mapping[str, object]) -> dict[str, object]:
+    if set(values) - {"ingestion_path", "compiler_digest", "counters"}:
+        raise TypeError("reasoner compiler diagnostics contain unsupported fields")
+    ingestion_path = values.get("ingestion_path")
+    if ingestion_path not in _INGESTION_PATHS:
+        raise TypeError("reasoner compiler ingestion path is incompatible")
+    result: dict[str, object] = {"ingestion_path": ingestion_path}
+    compiler_digest = values.get("compiler_digest")
+    if compiler_digest is not None:
+        if not isinstance(compiler_digest, str) or _SHA256.fullmatch(compiler_digest) is None:
+            raise TypeError("reasoner compiler digest must be lowercase SHA-256")
+        result["compiler_digest"] = compiler_digest
+    counters = values.get("counters")
+    if counters is None:
+        return result
+    if not isinstance(counters, Mapping) or any(
+        not isinstance(name, str) or name not in _COMPILER_COUNTERS for name in counters
+    ):
+        raise TypeError("reasoner compiler counters are incompatible")
+    bounded: dict[str, int | bool] = {}
+    for name, value in sorted(counters.items()):
+        if name == "encoded_compiler_gil_released":
+            if not isinstance(value, bool):
+                raise TypeError("reasoner compiler GIL diagnostic must be bool")
+        elif isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise TypeError("reasoner compiler counters must be nonnegative integers")
+        bounded[name] = value
+    result["counters"] = bounded
+    return result
 
 
 def _encoded_view_schemas(capabilities: object) -> dict[str, int]:

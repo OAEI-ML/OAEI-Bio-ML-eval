@@ -322,6 +322,63 @@ class TestCapabilityBoundary(unittest.TestCase):
     def test_absent_compiler_handoff_is_a_scalar_compatible_noop(self):
         metadata = _backend_metadata(types.SimpleNamespace(backend=_Backend()), "0.1.0.dev0")
         self.assertNotIn("compiler_handoff", metadata)
+        self.assertNotIn("compiler_diagnostics", metadata)
+
+    def test_public_compiler_diagnostics_are_bounded_and_canonical(self):
+        session = types.SimpleNamespace(
+            backend=_Backend(),
+            diagnostics=lambda: {
+                "ingestion_path": "encoded-native",
+                "compiler_digest": "a" * 64,
+                "encoded_buffer_count": 11,
+                "encoded_staging_copy_bytes": 0,
+                "encoded_compiler_gil_released": True,
+                "private_arena_id": "/private/tmp/forbidden",
+            },
+        )
+
+        metadata = _backend_metadata(session, "0.1.0.dev0")
+
+        self.assertEqual(
+            metadata["compiler_diagnostics"],
+            {
+                "ingestion_path": "encoded-native",
+                "compiler_digest": "a" * 64,
+                "counters": {
+                    "encoded_buffer_count": 11,
+                    "encoded_compiler_gil_released": True,
+                    "encoded_staging_copy_bytes": 0,
+                },
+            },
+        )
+        self.assertNotIn("private_arena_id", metadata["compiler_diagnostics"])
+
+    def test_malformed_public_compiler_diagnostics_fail_closed(self):
+        cases = (
+            None,
+            {"ingestion_path": "private-native"},
+            {"ingestion_path": "encoded-native", "compiler_digest": "/private/tmp"},
+            {"ingestion_path": "encoded-native", "encoded_buffer_count": True},
+            {
+                "ingestion_path": "encoded-native",
+                "encoded_compiler_gil_released": 1,
+            },
+        )
+        for diagnostics in cases:
+            with (
+                self.subTest(diagnostics=diagnostics),
+                self.assertRaisesRegex(
+                    NativeReasonerCompatibilityError,
+                    "diagnostic|ingestion_path",
+                ),
+            ):
+                _backend_metadata(
+                    types.SimpleNamespace(
+                        backend=_Backend(),
+                        diagnostics=lambda diagnostics=diagnostics: diagnostics,
+                    ),
+                    "0.1.0.dev0",
+                )
 
     def test_exact_compiler_handoff_is_canonicalized_after_validation(self):
         advertised = _compiler_handoff()
@@ -471,6 +528,41 @@ class TestELKAdapter(unittest.TestCase):
         self.assertEqual(result.unsatisfiable, (A, B))
         self.assertEqual(result.provenance["transport"]["mode"], "in-process-identity")
         self.assertTrue(_ELKSession.closed)
+
+    def test_unbounded_call_records_public_compiler_diagnostics(self):
+        diagnostics = {
+            "ingestion_path": "encoded-native",
+            "compiler_digest": "c" * 64,
+            "encoded_buffer_count": 11,
+            "encoded_staging_copy_bytes": 0,
+        }
+        with (
+            mock.patch.object(
+                _ELKSession,
+                "diagnostics",
+                return_value=diagnostics,
+                create=True,
+            ),
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                return_value=_pyelk_module(),
+            ),
+        ):
+            result = ELKReasoner().unsatisfiable_classes_view(
+                object(), which="elk", timeout_s=None
+            )
+
+        self.assertEqual(
+            result.provenance["backend"]["compiler_diagnostics"],
+            {
+                "ingestion_path": "encoded-native",
+                "compiler_digest": "c" * 64,
+                "counters": {
+                    "encoded_buffer_count": 11,
+                    "encoded_staging_copy_bytes": 0,
+                },
+            },
+        )
 
     def test_bounded_call_uses_only_verified_wire_result(self):
         ontology = object()
@@ -803,6 +895,8 @@ class TestGateAndProvenance(unittest.TestCase):
                 self.assertEqual(handoff["core_encoded_view_schemas"], schemas)
                 self.assertEqual(handoff["owner_kind"], owner_kind)
                 self.assertEqual(handoff["storage_kind"], storage_kind)
+                self.assertEqual(handoff["requested_reasoner"], "hermit")
+                self.assertEqual(handoff["selected_reasoner"], "hermit")
                 self.assertNotIn("compilation_path", handoff)
                 self.assertNotIn("counters", handoff)
 
@@ -821,8 +915,76 @@ class TestGateAndProvenance(unittest.TestCase):
                 "core_encoded_view_schemas": {},
                 "owner_kind": None,
                 "storage_kind": None,
+                "requested_reasoner": "hermit",
+                "selected_reasoner": "hermit",
             },
         )
+
+    def test_compiler_handoff_records_selected_public_reasoner_diagnostics(self):
+        provenance = build_coherence_provenance(
+            object(),
+            analyze_correspondences([]),
+            (),
+            UnsatResult(
+                (),
+                "elk",
+                0.1,
+                provenance={
+                    "package_version": "0.1.0.dev0",
+                    "backend": {
+                        "name": "rust",
+                        "implementation_version": "pyelk-native-test",
+                        "ir_schema_version": 1,
+                        "compiler_diagnostics": {
+                            "ingestion_path": "encoded-native",
+                            "compiler_digest": "b" * 64,
+                            "counters": {
+                                "encoded_buffer_count": 11,
+                                "encoded_staging_copy_bytes": 0,
+                            },
+                        },
+                    },
+                },
+            ),
+            requested_reasoner="hermit",
+            timeout_s=1.0,
+        )
+
+        handoff = provenance["compiler_handoff"]
+        self.assertEqual(handoff["requested_reasoner"], "hermit")
+        self.assertEqual(handoff["selected_reasoner"], "elk")
+        self.assertEqual(handoff["selected_backend"], "rust")
+        self.assertEqual(handoff["implementation_version"], "pyelk-native-test")
+        self.assertEqual(handoff["reasoner_ir_schema_version"], 1)
+        self.assertEqual(handoff["ingestion_path"], "encoded-native")
+        self.assertEqual(handoff["compiler_digest"], "b" * 64)
+        self.assertEqual(
+            handoff["counters"],
+            {"encoded_buffer_count": 11, "encoded_staging_copy_bytes": 0},
+        )
+
+    def test_compiler_handoff_rejects_private_reasoner_diagnostic_fields(self):
+        with self.assertRaisesRegex(TypeError, "unsupported fields"):
+            build_coherence_provenance(
+                object(),
+                analyze_correspondences([]),
+                (),
+                UnsatResult(
+                    (),
+                    "elk",
+                    0.1,
+                    provenance={
+                        "backend": {
+                            "compiler_diagnostics": {
+                                "ingestion_path": "encoded-native",
+                                "private_arena_id": "/private/tmp/forbidden",
+                            }
+                        }
+                    },
+                ),
+                requested_reasoner="elk",
+                timeout_s=None,
+            )
 
     def test_malformed_core_schema_advertisement_is_not_silently_normalized(self):
         bridge = analyze_correspondences([])
