@@ -38,6 +38,38 @@ _EXPECTED_REASONER_LINE = (0, 1)
 _MAX_WORKER_RESPONSE_BYTES = 16 * 1024 * 1024
 _WORKER_SHUTDOWN_SECONDS = 1.0
 
+# Frozen pyowl-core encoded-view v1 compatibility fence.  OAEI never requests or
+# inspects these buffers; it only validates an optional public reasoner attestation.
+_ENCODED_SCHEMA_NAME = "pyowl-core/structural-columns"
+_ENCODED_SCHEMA_VERSION = 1
+_ENCODED_MODEL_SCHEMA = 1
+_ENCODED_DESCRIPTOR_SHA256 = (
+    "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5"
+)
+_ENCODED_BUFFER_WIDTHS = {
+    "field_kinds": 1,
+    "field_lengths": 8,
+    "field_values": 8,
+    "item_kinds": 1,
+    "item_lengths": 8,
+    "item_values": 8,
+    "node_field_offsets": 8,
+    "node_tags": 2,
+    "root_ids": 4,
+    "root_kinds": 1,
+    "scalar_bytes": 1,
+}
+_COMPILER_HANDOFF_FIELDS = frozenset(
+    {
+        "buffer_widths",
+        "descriptor_sha256",
+        "model_schema",
+        "schema_name",
+        "schema_version",
+    }
+)
+_MISSING = object()
+
 JsonValue: TypeAlias = object
 
 
@@ -454,7 +486,92 @@ def _backend_metadata(session: Any, package_version: str) -> dict[str, JsonValue
             and all(isinstance(item, int) and not isinstance(item, bool) for item in value)
         ):
             metadata[name] = list(value)
+    compiler_handoff = getattr(backend, "compiler_handoff", _MISSING)
+    if compiler_handoff is not _MISSING:
+        metadata["compiler_handoff"] = _validate_compiler_handoff(compiler_handoff)
     return metadata
+
+
+def _validate_compiler_handoff(value: object) -> dict[str, JsonValue]:
+    """Validate the optional, currently unadvertised encoded-schema attestation.
+
+    This metadata is compatibility evidence only.  It neither selects a reasoner path nor
+    proves that a particular session used encoded-native compilation.
+    """
+
+    if not isinstance(value, Mapping):
+        raise NativeReasonerCompatibilityError(
+            "native backend compiler_handoff must be a mapping"
+        )
+    fields = set(value)
+    if not all(isinstance(name, str) for name in fields):
+        raise NativeReasonerCompatibilityError(
+            "native backend compiler_handoff keys must be strings"
+        )
+    missing = sorted(_COMPILER_HANDOFF_FIELDS - fields)
+    extra = sorted(fields - _COMPILER_HANDOFF_FIELDS)
+    if missing or extra:
+        details = []
+        if missing:
+            details.append("missing " + ", ".join(missing))
+        if extra:
+            details.append("unexpected " + ", ".join(extra))
+        raise NativeReasonerCompatibilityError(
+            "native backend compiler_handoff fields are invalid: " + "; ".join(details)
+        )
+
+    expected_scalars: tuple[tuple[str, object], ...] = (
+        ("schema_name", _ENCODED_SCHEMA_NAME),
+        ("schema_version", _ENCODED_SCHEMA_VERSION),
+        ("model_schema", _ENCODED_MODEL_SCHEMA),
+        ("descriptor_sha256", _ENCODED_DESCRIPTOR_SHA256),
+    )
+    for name, expected in expected_scalars:
+        actual = value[name]
+        if type(actual) is not type(expected) or actual != expected:
+            raise NativeReasonerCompatibilityError(
+                f"native backend compiler_handoff {name} is incompatible; "
+                f"expected {expected!r}, received {actual!r}"
+            )
+
+    widths = value["buffer_widths"]
+    if not isinstance(widths, Mapping):
+        raise NativeReasonerCompatibilityError(
+            "native backend compiler_handoff buffer_widths must be a mapping"
+        )
+    width_names = set(widths)
+    if not all(isinstance(name, str) for name in width_names):
+        raise NativeReasonerCompatibilityError(
+            "native backend compiler_handoff buffer names must be strings"
+        )
+    missing_widths = sorted(set(_ENCODED_BUFFER_WIDTHS) - width_names)
+    extra_widths = sorted(width_names - set(_ENCODED_BUFFER_WIDTHS))
+    if missing_widths or extra_widths:
+        details = []
+        if missing_widths:
+            details.append("missing " + ", ".join(missing_widths))
+        if extra_widths:
+            details.append("unexpected " + ", ".join(extra_widths))
+        raise NativeReasonerCompatibilityError(
+            "native backend compiler_handoff buffer widths are invalid: "
+            + "; ".join(details)
+        )
+    for name, expected in _ENCODED_BUFFER_WIDTHS.items():
+        actual = widths[name]
+        if type(actual) is not int or actual != expected:
+            raise NativeReasonerCompatibilityError(
+                f"native backend compiler_handoff width for {name!r} is incompatible; "
+                f"expected {expected}, received {actual!r}"
+            )
+
+    # Build the JSON-safe copy only after the complete envelope has passed.
+    return {
+        "buffer_widths": dict(sorted(_ENCODED_BUFFER_WIDTHS.items())),
+        "descriptor_sha256": _ENCODED_DESCRIPTOR_SHA256,
+        "model_schema": _ENCODED_MODEL_SCHEMA,
+        "schema_name": _ENCODED_SCHEMA_NAME,
+        "schema_version": _ENCODED_SCHEMA_VERSION,
+    }
 
 
 def _classify_elk_identity(

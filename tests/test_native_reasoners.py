@@ -27,6 +27,7 @@ from oaei_bioml_eval.coherence.native_reasoners import (
     NativeReasonerCompatibilityError,
     NativeReasonerUnavailableError,
     NativeWorkerError,
+    _backend_metadata,
     _encode_core_wire,
     _run_elk_worker,
 )
@@ -67,6 +68,33 @@ class _Backend:
     ir_schema_version = 1
     accelerated = False
     complete_features = frozenset({"classification"})
+
+
+_ENCODED_BUFFER_WIDTHS = {
+    "root_kinds": 1,
+    "root_ids": 4,
+    "node_tags": 2,
+    "node_field_offsets": 8,
+    "field_kinds": 1,
+    "field_values": 8,
+    "field_lengths": 8,
+    "item_kinds": 1,
+    "item_values": 8,
+    "item_lengths": 8,
+    "scalar_bytes": 1,
+}
+
+
+def _compiler_handoff():
+    return {
+        "schema_name": "pyowl-core/structural-columns",
+        "schema_version": 1,
+        "model_schema": 1,
+        "descriptor_sha256": (
+            "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5"
+        ),
+        "buffer_widths": dict(_ENCODED_BUFFER_WIDTHS),
+    }
 
 
 class _HermiTConfig:
@@ -290,6 +318,92 @@ class TestCapabilityBoundary(unittest.TestCase):
             result = ELKReasoner().unsatisfiable_classes_view(object(), which="elk", timeout_s=None)
         version.assert_called_once_with("pyelk-reasoner")
         self.assertEqual(result.provenance["package_version"], "0.1.0.dev0")
+
+    def test_absent_compiler_handoff_is_a_scalar_compatible_noop(self):
+        metadata = _backend_metadata(types.SimpleNamespace(backend=_Backend()), "0.1.0.dev0")
+        self.assertNotIn("compiler_handoff", metadata)
+
+    def test_exact_compiler_handoff_is_canonicalized_after_validation(self):
+        advertised = _compiler_handoff()
+        advertised["buffer_widths"] = dict(reversed(tuple(_ENCODED_BUFFER_WIDTHS.items())))
+        backend = types.SimpleNamespace(compiler_handoff=advertised)
+        metadata = _backend_metadata(
+            types.SimpleNamespace(backend=backend),
+            "0.1.0.dev0",
+        )
+        handoff = metadata["compiler_handoff"]
+        self.assertEqual(handoff["descriptor_sha256"], advertised["descriptor_sha256"])
+        self.assertEqual(
+            list(handoff["buffer_widths"]),
+            sorted(_ENCODED_BUFFER_WIDTHS),
+        )
+
+    def test_partial_or_non_mapping_compiler_handoff_fails_closed(self):
+        invalid = _compiler_handoff()
+        del invalid["descriptor_sha256"]
+        for advertised in (invalid, None, (), object()):
+            with (
+                self.subTest(advertised=type(advertised).__name__),
+                self.assertRaisesRegex(
+                    NativeReasonerCompatibilityError,
+                    "compiler_handoff",
+                ),
+            ):
+                _backend_metadata(
+                    types.SimpleNamespace(
+                        backend=types.SimpleNamespace(compiler_handoff=advertised)
+                    ),
+                    "0.1.0.dev0",
+                )
+
+    def test_extra_or_inexact_buffer_width_fails_closed(self):
+        for name, value, remove in (
+            ("extra_buffer", 1, False),
+            ("root_ids", 8, False),
+            ("root_ids", True, False),
+            ("scalar_bytes", None, True),
+        ):
+            advertised = _compiler_handoff()
+            if remove:
+                del advertised["buffer_widths"][name]
+            else:
+                advertised["buffer_widths"][name] = value
+            with (
+                self.subTest(name=name, value=value, remove=remove),
+                self.assertRaisesRegex(
+                    NativeReasonerCompatibilityError,
+                    "buffer|width",
+                ),
+            ):
+                _backend_metadata(
+                    types.SimpleNamespace(
+                        backend=types.SimpleNamespace(compiler_handoff=advertised)
+                    ),
+                    "0.1.0.dev0",
+                )
+
+    def test_descriptor_and_model_schema_drift_fail_closed(self):
+        for field, value in (
+            ("descriptor_sha256", "0" * 64),
+            ("model_schema", 2),
+            ("model_schema", True),
+            ("schema_version", True),
+        ):
+            advertised = _compiler_handoff()
+            advertised[field] = value
+            with (
+                self.subTest(field=field, value=value),
+                self.assertRaisesRegex(
+                    NativeReasonerCompatibilityError,
+                    field,
+                ),
+            ):
+                _backend_metadata(
+                    types.SimpleNamespace(
+                        backend=types.SimpleNamespace(compiler_handoff=advertised)
+                    ),
+                    "0.1.0.dev0",
+                )
 
 
 _DEFAULT_ONTOLOGY = object()
