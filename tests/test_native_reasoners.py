@@ -336,9 +336,12 @@ class TestCapabilityBoundary(unittest.TestCase):
                 "compiler_cache_schema_version": 2,
                 "ir_schema_version": 3,
                 "native_abi_version": 4,
+                "consumer_compile_seconds": 0.25,
+                "encoded_view_publication_seconds": 0.125,
                 "encoded_buffer_count": 11,
                 "encoded_staging_copy_bytes": 0,
                 "encoded_compiler_gil_released": True,
+                "materialized_scalar_rows": 0,
                 "private_arena_id": "/private/tmp/forbidden",
             },
         )
@@ -353,10 +356,13 @@ class TestCapabilityBoundary(unittest.TestCase):
                 "compiler_cache_schema_version": 2,
                 "ir_schema_version": 3,
                 "native_abi_version": 4,
+                "consumer_compile_seconds": 0.25,
+                "encoded_view_publication_seconds": 0.125,
                 "counters": {
                     "encoded_buffer_count": 11,
                     "encoded_compiler_gil_released": True,
                     "encoded_staging_copy_bytes": 0,
+                    "materialized_scalar_rows": 0,
                 },
             },
         )
@@ -371,6 +377,11 @@ class TestCapabilityBoundary(unittest.TestCase):
             {"ingestion_path": "encoded-native", "compiler_cache_schema_version": True},
             {"ingestion_path": "encoded-native", "ir_schema_version": 0},
             {"ingestion_path": "encoded-native", "native_abi_version": ""},
+            {"ingestion_path": "encoded-native", "consumer_compile_seconds": True},
+            {
+                "ingestion_path": "encoded-native",
+                "encoded_view_publication_seconds": float("nan"),
+            },
             {
                 "ingestion_path": "encoded-native",
                 "encoded_compiler_gil_released": 1,
@@ -1052,9 +1063,12 @@ class TestGateAndProvenance(unittest.TestCase):
                             "compiler_cache_schema_version": 2,
                             "ir_schema_version": 3,
                             "native_abi_version": 4,
+                            "consumer_compile_seconds": 0.25,
+                            "encoded_view_publication_seconds": 0.125,
                             "counters": {
                                 "encoded_buffer_count": 11,
                                 "encoded_staging_copy_bytes": 0,
+                                "materialized_scalar_rows": 0,
                             },
                         },
                     },
@@ -1075,9 +1089,15 @@ class TestGateAndProvenance(unittest.TestCase):
         self.assertEqual(handoff["compiler_cache_schema_version"], 2)
         self.assertEqual(handoff["ir_schema_version"], 3)
         self.assertEqual(handoff["native_abi_version"], 4)
+        self.assertEqual(handoff["consumer_compile_seconds"], 0.25)
+        self.assertEqual(handoff["encoded_view_publication_seconds"], 0.125)
         self.assertEqual(
             handoff["counters"],
-            {"encoded_buffer_count": 11, "encoded_staging_copy_bytes": 0},
+            {
+                "encoded_buffer_count": 11,
+                "encoded_staging_copy_bytes": 0,
+                "materialized_scalar_rows": 0,
+            },
         )
 
     def test_compiler_handoff_rejects_private_reasoner_diagnostic_fields(self):
@@ -1108,6 +1128,8 @@ class TestGateAndProvenance(unittest.TestCase):
             ("compiler_cache_schema_version", True),
             ("ir_schema_version", 0),
             ("native_abi_version", ""),
+            ("consumer_compile_seconds", True),
+            ("encoded_view_publication_seconds", float("inf")),
         ):
             with self.subTest(name=name), self.assertRaisesRegex(TypeError, "must be"):
                 build_coherence_provenance(

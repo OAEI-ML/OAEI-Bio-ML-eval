@@ -74,6 +74,7 @@ _COMPILER_HANDOFF_FIELDS = frozenset(
 _INGESTION_PATHS = frozenset({"scalar-python", "scalar-native", "scalar-wire", "encoded-native"})
 _COMPILER_COUNTERS = frozenset(
     {
+        "base_flattening_bytes",
         "encoded_buffer_count",
         "encoded_buffer_bytes",
         "encoded_zero_copy_buffers",
@@ -85,6 +86,25 @@ _COMPILER_COUNTERS = frozenset(
         "encoded_referenced_view_count",
         "encoded_posting_bytes",
         "encoded_compiler_gil_released",
+        "materialized_scalar_rows",
+        "parser_calls",
+        "per_row_ffi_calls",
+        "resolver_calls",
+        "scalar_axiom_materializations",
+        "scalar_term_materializations",
+        "structural_copy_bytes",
+        "wire_decoder_calls",
+        "wire_encoder_calls",
+    }
+)
+_COMPILER_TIMINGS = frozenset(
+    {
+        "consumer_compile_seconds",
+        "encoded_compiler_seconds",
+        "encoded_native_boundary_seconds",
+        "encoded_session_build_seconds",
+        "encoded_validation_seconds",
+        "encoded_view_publication_seconds",
     }
 )
 _COMPILER_SCHEMA_FIELDS = frozenset(
@@ -569,6 +589,15 @@ def _compiler_diagnostics(session: Any) -> dict[str, JsonValue] | None:
         elif isinstance(value, bool) or not isinstance(value, int) or value < 1:
             raise NativeReasonerCompatibilityError(
                 f"native Reasoner {name} diagnostic must be a positive integer"
+            )
+        result[name] = value
+    for name in sorted(_COMPILER_TIMINGS):
+        if name not in values:
+            continue
+        value = values[name]
+        if type(value) is not float or not math.isfinite(value) or value < 0.0:
+            raise NativeReasonerCompatibilityError(
+                f"native Reasoner {name} diagnostic must be a finite nonnegative float"
             )
         result[name] = value
     counters: dict[str, int | bool] = {}
