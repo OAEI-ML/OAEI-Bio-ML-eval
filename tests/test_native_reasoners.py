@@ -387,6 +387,14 @@ class TestCapabilityBoundary(unittest.TestCase):
                 "encoded_view_publication_seconds": 0.25,
             },
             {
+                "ingestion_path": "scalar-python",
+                "encoded_validation_seconds": 0.25,
+            },
+            {
+                "ingestion_path": "scalar-python",
+                "encoded_buffer_count": 1,
+            },
+            {
                 "ingestion_path": "encoded-native",
                 "encoded_compiler_gil_released": 1,
             },
@@ -1157,27 +1165,38 @@ class TestGateAndProvenance(unittest.TestCase):
                     timeout_s=None,
                 )
 
-        with self.assertRaisesRegex(ValueError, "claimed encoded-view publication"):
-            build_coherence_provenance(
-                object(),
-                analyze_correspondences([]),
-                (),
-                UnsatResult(
-                    (),
-                    "elk",
-                    0.1,
-                    provenance={
-                        "backend": {
-                            "compiler_diagnostics": {
-                                "ingestion_path": "scalar-python",
-                                "encoded_view_publication_seconds": 0.25,
-                            }
-                        }
-                    },
-                ),
-                requested_reasoner="elk",
-                timeout_s=None,
+        for name, value, message in (
+            ("encoded_view_publication_seconds", 0.25, "encoded-only timing"),
+            ("encoded_validation_seconds", 0.25, "encoded-only timing"),
+            ("encoded_buffer_count", 1, "nonzero encoded resources"),
+            ("encoded_compiler_gil_released", True, "nonzero encoded resources"),
+        ):
+            diagnostic = (
+                {"counters": {name: value}}
+                if name.startswith("encoded_") and not name.endswith("_seconds")
+                else {name: value}
             )
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, message):
+                build_coherence_provenance(
+                    object(),
+                    analyze_correspondences([]),
+                    (),
+                    UnsatResult(
+                        (),
+                        "elk",
+                        0.1,
+                        provenance={
+                            "backend": {
+                                "compiler_diagnostics": {
+                                    "ingestion_path": "scalar-python",
+                                    **diagnostic,
+                                }
+                            }
+                        },
+                    ),
+                    requested_reasoner="elk",
+                    timeout_s=None,
+                )
 
     def test_malformed_core_schema_advertisement_is_not_silently_normalized(self):
         bridge = analyze_correspondences([])

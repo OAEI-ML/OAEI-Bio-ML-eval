@@ -54,6 +54,20 @@ _COMPILER_TIMINGS = frozenset(
         "encoded_view_publication_seconds",
     }
 )
+_ENCODED_ONLY_TIMINGS = _COMPILER_TIMINGS - {"consumer_compile_seconds"}
+_ENCODED_ONLY_COUNTER_DEFAULTS: Mapping[str, int | bool] = {
+    "encoded_buffer_count": 0,
+    "encoded_buffer_bytes": 0,
+    "encoded_zero_copy_buffers": 0,
+    "encoded_detached_buffer_count": 0,
+    "encoded_indexed_buffer_count": 0,
+    "encoded_staging_copy_bytes": 0,
+    "encoded_private_ir_bytes": 0,
+    "encoded_segment_count": 0,
+    "encoded_referenced_view_count": 0,
+    "encoded_posting_bytes": 0,
+    "encoded_compiler_gil_released": False,
+}
 _COMPILER_SCHEMA_FIELDS = frozenset(
     {
         "compiler_cache_schema_version",
@@ -255,8 +269,11 @@ def _bounded_compiler_diagnostics(values: Mapping[str, object]) -> dict[str, obj
         if type(value) is not float or not math.isfinite(value) or value < 0.0:
             raise TypeError(f"reasoner compiler diagnostic {name} must be finite and nonnegative")
         result[name] = value
-    if ingestion_path != "encoded-native" and "encoded_view_publication_seconds" in result:
-        raise ValueError("scalar reasoner ingestion claimed encoded-view publication")
+    if (
+        ingestion_path != "encoded-native"
+        and any(name in result for name in _ENCODED_ONLY_TIMINGS)
+    ):
+        raise ValueError("scalar reasoner ingestion claimed an encoded-only timing")
     counters = values.get("counters")
     if counters is None:
         return result
@@ -272,6 +289,11 @@ def _bounded_compiler_diagnostics(values: Mapping[str, object]) -> dict[str, obj
         elif isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise TypeError("reasoner compiler counters must be nonnegative integers")
         bounded[name] = value
+    if ingestion_path != "encoded-native" and any(
+        name in bounded and bounded[name] != expected
+        for name, expected in _ENCODED_ONLY_COUNTER_DEFAULTS.items()
+    ):
+        raise ValueError("scalar reasoner ingestion claimed nonzero encoded resources")
     result["counters"] = bounded
     return result
 
