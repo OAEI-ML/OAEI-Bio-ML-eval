@@ -255,6 +255,8 @@ def _bounded_compiler_diagnostics(values: Mapping[str, object]) -> dict[str, obj
         if type(value) is not float or not math.isfinite(value) or value < 0.0:
             raise TypeError(f"reasoner compiler diagnostic {name} must be finite and nonnegative")
         result[name] = value
+    if ingestion_path != "encoded-native" and "encoded_view_publication_seconds" in result:
+        raise ValueError("scalar reasoner ingestion claimed encoded-view publication")
     counters = values.get("counters")
     if counters is None:
         return result

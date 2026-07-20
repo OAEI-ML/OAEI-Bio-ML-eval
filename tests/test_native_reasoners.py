@@ -383,6 +383,10 @@ class TestCapabilityBoundary(unittest.TestCase):
                 "encoded_view_publication_seconds": float("nan"),
             },
             {
+                "ingestion_path": "scalar-python",
+                "encoded_view_publication_seconds": 0.25,
+            },
+            {
                 "ingestion_path": "encoded-native",
                 "encoded_compiler_gil_released": 1,
             },
@@ -392,7 +396,7 @@ class TestCapabilityBoundary(unittest.TestCase):
                 self.subTest(diagnostics=diagnostics),
                 self.assertRaisesRegex(
                     NativeReasonerCompatibilityError,
-                    "diagnostic|ingestion_path",
+                    "diagnostic|ingestion_path|claimed",
                 ),
             ):
                 _backend_metadata(
@@ -1152,6 +1156,28 @@ class TestGateAndProvenance(unittest.TestCase):
                     requested_reasoner="elk",
                     timeout_s=None,
                 )
+
+        with self.assertRaisesRegex(ValueError, "claimed encoded-view publication"):
+            build_coherence_provenance(
+                object(),
+                analyze_correspondences([]),
+                (),
+                UnsatResult(
+                    (),
+                    "elk",
+                    0.1,
+                    provenance={
+                        "backend": {
+                            "compiler_diagnostics": {
+                                "ingestion_path": "scalar-python",
+                                "encoded_view_publication_seconds": 0.25,
+                            }
+                        }
+                    },
+                ),
+                requested_reasoner="elk",
+                timeout_s=None,
+            )
 
     def test_malformed_core_schema_advertisement_is_not_silently_normalized(self):
         bridge = analyze_correspondences([])

@@ -600,6 +600,13 @@ def _compiler_diagnostics(session: Any) -> dict[str, JsonValue] | None:
                 f"native Reasoner {name} diagnostic must be a finite nonnegative float"
             )
         result[name] = value
+    if (
+        ingestion_path != "encoded-native"
+        and "encoded_view_publication_seconds" in result
+    ):
+        raise NativeReasonerCompatibilityError(
+            "scalar Reasoner ingestion claimed encoded-view publication"
+        )
     counters: dict[str, int | bool] = {}
     for name in sorted(_COMPILER_COUNTERS):
         if name not in values:
