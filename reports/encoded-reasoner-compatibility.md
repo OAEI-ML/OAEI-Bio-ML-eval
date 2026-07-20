@@ -1,7 +1,11 @@
 # Encoded reasoner compatibility checkpoint
 
-Date: 2026-07-20. OAEI-Bio-ML-eval revision: `fcebff1`. Coordinated source candidates:
-pyOWLCore `34b9e84`, pyELK `886f6a3`, and pyHermiT `3c56fc2`.
+Date: 2026-07-20. OAEI-Bio-ML-eval handoff revision:
+`fcebff14a99e4ea928a8c7b8bf7a4b6d142f970f`; executable performance-protocol revision:
+`01815e8f94575e974fcc14ef6135cf8bbe3bdeb2`. Coordinated source candidates are pyOWLCore
+`34b9e841dbda3ad0062d9d578008084de754142e`, pyELK
+`886f6a3dad537704a3408973602f58e3bdbec671`, and pyHermiT
+`3c56fc22f2a5480f093ad1c2f4411659466ad7f5`.
 
 ## Outcome
 
@@ -15,6 +19,8 @@ This checkpoint does **not** complete the 0.2.x acceptance package. The coordina
 capabilities remain unadvertised, and installed Python/platform matrices, accepted biomedical and
 licensed-scale performance, final dependency ranges, artifact audits, and the public compatibility
 matrix remain open. Global/reference/local coherence semantics and result keys are unchanged.
+The executable comparison machinery is now repository-owned and fail-closed; no external timing
+or memory result was generated or inferred by this checkpoint.
 
 ## Implemented repository-owned slice
 
@@ -35,19 +41,27 @@ matrix remain open. Global/reference/local coherence semantics and result keys a
   enforces composite/reasoner identity, records wall/CPU/RSS by phase, uses public compiler timing
   and counters, reports missing counter coverage honestly, and binds input, denominator,
   unsatisfiable-result, structural, and canonical-provenance hashes.
+- Its additive `oaei-bioml-eval.o3-native-acceptance/1` mode alternates scalar and candidate
+  samples in fresh spawned processes, discards warmups, takes median retained wall/RSS, verifies
+  fixed input and semantic identity, and evaluates the frozen 25% wall and 20% RSS ceilings.
+  `--enforce` also requires an observed scalar baseline, `encoded-native` on every candidate,
+  complete public counter coverage, and zero parser/resolver/materialization/structural-copy/wire/
+  per-row-FFI counters. It reports every failed check rather than silently accepting fallback.
 - Base and RDF-only installations remain independent of the optional shared OWL/reasoner stack;
   the reasoner extra remains Java-free and metric behavior is independent of acceleration.
 
 The implementation sequence is represented by `6dec23f`, `ac751b5`, `0de124c`, `992d918`,
-`ecb4235`, `7c65fa0`, `d0b7c87`, `2dd1fc2`, and `fcebff1`.
+`ecb4235`, `7c65fa0`, `d0b7c87`, `2dd1fc2`, `fcebff1`, and `01815e8`.
 
 ## Local verification at this checkpoint
 
 Against pyELK `886f6a3`, pyHermiT `3c56fc2`, and the current core source candidate, the complete
-OAEI suite passed 202 tests plus 69 subtests. Ruff passed over `src`, `tests`, `tools`, and
+OAEI suite passed 208 tests plus 69 subtests. Ruff passed over `src`, `tests`, `tools`, and
 `benchmarks`; strict mypy passed 27 source files with sibling source typing enabled. Focused
-benchmark smoke tests also prove that an in-process reasoner receives the exact composite and that
-the benchmark itself performs zero core-wire encodes.
+benchmark tests cover passing and failing ratios, exact-identity drift, scalar fallback,
+incomplete/missing counters, nonzero forbidden counters, insufficient sampling, and `--enforce`
+exit status. An actual two-class isolated-process smoke exercised the collector but is deliberately
+not retained as performance evidence.
 
 These local results validate the handoff implementation, not the release-scale timing and memory
 thresholds.
@@ -61,11 +75,14 @@ thresholds.
 | Bounded public compiler provenance and schema validation | Implemented and tested |
 | Missing counters remain unavailable rather than fabricated | Implemented and tested |
 | No unconditional in-process wire encode in the benchmark | Implemented and tested |
-| Metric/result behavior unchanged across the existing suite | 202 tests + 69 subtests pass |
+| Alternating warmup/repetition collector with independent RSS | Implemented at `01815e8` |
+| Fixed input/semantic identity and scalar baseline checks | Implemented at `01815e8` |
+| Executable 25% wall / 20% RSS evaluator and `--enforce` | Implemented at `01815e8` |
+| Metric/result behavior unchanged across the existing suite | 208 tests + 69 subtests pass |
 | Forced encoded pyELK/pyHermiT paths | Open until reasoner capabilities are advertised |
 | Pure/scalar/native Python-version and installed-wheel matrix | Open |
 | Conference/Bio-ML, GO/NCIT, and licensed SNOMED-scale evidence | Open |
-| Maximum 25% wall and 20% RSS regression gates | Open; no performance claim is made |
+| Accepted 25% wall and 20% RSS external records | Open; no performance claim is made |
 | Final compatible releases/ranges and audited artifacts | Open |
 | Official deployment and leaderboard dry run | Open under the 0.2.0 release plan |
 

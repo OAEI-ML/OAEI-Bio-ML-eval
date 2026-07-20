@@ -14,6 +14,8 @@ Versioning for its public package and CLI contracts.
   and deterministic `coherence-provenance/1` reports.
 - Bounded public compiler-handoff provenance for reasoner ingestion paths,
   implementation schemas, digests, and available zero-copy/copy counters.
+- A fail-closed scalar-versus-encoded performance protocol with isolated warmups/repetitions,
+  exact input/result identity, median 25% wall and 20% RSS gates, and explicit counter enforcement.
 - A create-only NCIT–DOID schema-2 evidence capture binding the frozen baseline,
   exact inputs, native pyELK binary, semantic digest, and bounded timings.
 - Explicit Conference-style micro and Bio-ML-style macro aggregation.

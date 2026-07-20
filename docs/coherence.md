@@ -72,3 +72,29 @@ also records its selected ingestion path, canonical compiler digest, compiler-ca
 schema, private-IR schema, native ABI version, and the bounded copy/ownership counters
 that are actually available. Missing diagnostics stay absent; the evaluator neither
 infers acceleration from a package version nor fabricates zero counters.
+
+## Encoded performance protocol
+
+The repository benchmark keeps its existing schema-2 single-run diagnostic mode. Supplying a
+scalar `--baseline-backend` enables the additive acceptance comparator:
+
+```text
+PYTHONPATH=src:../pyOWLCore/src:../pyELK/src \
+  python3 benchmarks/bench_o3_native.py \
+  --reasoner elk --baseline-backend python --backend rust \
+  --warmups 1 --repetitions 5 --enforce
+```
+
+Each sample runs in a fresh spawned process so process peak RSS is independent of earlier samples.
+Baseline and candidate order alternates. The report requires identical input and semantic hashes,
+uses median retained pipeline wall time and peak RSS, and evaluates candidate/scalar ratios against
+the maximum `1.25` wall and `1.20` RSS gates. Enforcement additionally requires every baseline to
+report a scalar ingestion path and every candidate to report `encoded-native`, complete public
+counter coverage, no benchmark wire encode, and zero forbidden parser, resolver, scalar
+materialization, structural-copy, wire, base-flattening, and per-row-FFI counters.
+
+The built-in generated workload is a protocol exercise only. Its report always says
+`diagnostic_only: true`, `release_gate_eligible: false`, and `release_accepted: false`; a zero exit
+from `--enforce` would validate those mechanics, not replace pinned Conference/Bio-ML, GO/NCIT, or
+licensed SNOMED-scale evidence. With the current unadvertised sibling capabilities, enforcement is
+expected to fail closed on the selected path and missing counters.
