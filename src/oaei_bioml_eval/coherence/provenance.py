@@ -31,6 +31,7 @@ def build_coherence_provenance(
     denominator_values = tuple(sorted(set(denominator)))
     numerator_values = tuple(sorted(set(result.unsatisfiable)))
     core = _core_metadata(ontology)
+    compiler_handoff = _core_compiler_handoff(ontology)
     reasoner_details = _json_mapping(result.provenance)
     profile = _json_mapping(reasoner_details.get("profile"))
     transport = reasoner_details.get("transport", "in-process-identity")
@@ -57,6 +58,7 @@ def build_coherence_provenance(
             "api_options": _json_mapping(api_options or {}),
         },
         "core": core,
+        "compiler_handoff": compiler_handoff,
         "bridge": {
             "input_count": bridge.input_count + bridge.invalid_dropped_count,
             "normalized_count": len(bridge.correspondences),
@@ -89,6 +91,59 @@ def build_coherence_provenance(
             "digest_scheme": "sorted-utf8-lines-sha256-v1",
         },
     }
+
+
+def _core_compiler_handoff(ontology: object) -> dict[str, object]:
+    """Record only public core shape; do not infer the reasoner's compiler path."""
+
+    capabilities = getattr(ontology, "capabilities", None)
+    if capabilities is None:
+        return {
+            "core_encoded_view_schemas": {},
+            "owner_kind": None,
+            "storage_kind": None,
+        }
+    features = frozenset(str(item) for item in getattr(capabilities, "features", ()))
+    context_kind = getattr(getattr(ontology, "structural_context", None), "kind", None)
+    context_value = getattr(context_kind, "value", None)
+    if context_value in {"composite", "overlay"}:
+        owner_kind = context_value
+    elif "ontology-composite" in features:
+        owner_kind = "composite"
+    elif "ontology-overlay" in features:
+        owner_kind = "overlay"
+    else:
+        owner_kind = "direct"
+
+    storage_kind: str | None
+    if "mmap-snapshot" in features:
+        storage_kind = "mmap"
+    elif "wire-verified" in features:
+        storage_kind = "decoded"
+    else:
+        backend = getattr(capabilities, "backend", None)
+        storage_kind = backend if isinstance(backend, str) and backend else None
+    return {
+        "core_encoded_view_schemas": _encoded_view_schemas(capabilities),
+        "owner_kind": owner_kind,
+        "storage_kind": storage_kind,
+    }
+
+
+def _encoded_view_schemas(capabilities: object) -> dict[str, int]:
+    raw = getattr(capabilities, "encoded_view_schemas", None)
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise TypeError("core encoded_view_schemas must be a mapping")
+    result: dict[str, int] = {}
+    for name, version in raw.items():
+        if type(name) is not str or not name:
+            raise TypeError("core encoded-view schema names must be nonempty exact strings")
+        if type(version) is not int or version < 1:
+            raise TypeError("core encoded-view schema versions must be positive exact integers")
+        result[name] = version
+    return dict(sorted(result.items()))
 
 
 def sorted_line_sha256(values: Iterable[str]) -> str:

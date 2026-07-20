@@ -751,6 +751,107 @@ class TestGateAndProvenance(unittest.TestCase):
         self.assertEqual(first["bridge"]["self_pair_count"], 1)
         self.assertEqual(first["bridge"]["invalid_dropped_count"], 2)
 
+    def test_compiler_handoff_records_public_core_shape_without_path_claims(self):
+        bridge = analyze_correspondences([])
+        result = UnsatResult((), "hermit", 0.1)
+        cases = (
+            ((), {}, "python", None, "direct", "python"),
+            (
+                ("wire-verified",),
+                {"pyowl-core/structural-columns": 1},
+                "python",
+                None,
+                "direct",
+                "decoded",
+            ),
+            (
+                ("wire-verified", "mmap-snapshot"),
+                {},
+                "python",
+                None,
+                "direct",
+                "mmap",
+            ),
+            (
+                (),
+                {},
+                "mixed",
+                types.SimpleNamespace(kind=types.SimpleNamespace(value="composite")),
+                "composite",
+                "mixed",
+            ),
+        )
+        for features, schemas, backend, context, owner_kind, storage_kind in cases:
+            with self.subTest(owner_kind=owner_kind, storage_kind=storage_kind):
+                ontology = types.SimpleNamespace(
+                    capabilities=types.SimpleNamespace(
+                        features=frozenset(features),
+                        encoded_view_schemas=schemas,
+                        backend=backend,
+                    ),
+                    structural_context=context,
+                )
+                provenance = build_coherence_provenance(
+                    ontology,
+                    bridge,
+                    (),
+                    result,
+                    requested_reasoner="hermit",
+                    timeout_s=None,
+                )
+                handoff = provenance["compiler_handoff"]
+                self.assertEqual(handoff["core_encoded_view_schemas"], schemas)
+                self.assertEqual(handoff["owner_kind"], owner_kind)
+                self.assertEqual(handoff["storage_kind"], storage_kind)
+                self.assertNotIn("compilation_path", handoff)
+                self.assertNotIn("counters", handoff)
+
+    def test_compiler_handoff_capability_absence_is_an_empty_noop(self):
+        provenance = build_coherence_provenance(
+            object(),
+            analyze_correspondences([]),
+            (),
+            UnsatResult((), "hermit", 0.1),
+            requested_reasoner="hermit",
+            timeout_s=None,
+        )
+        self.assertEqual(
+            provenance["compiler_handoff"],
+            {
+                "core_encoded_view_schemas": {},
+                "owner_kind": None,
+                "storage_kind": None,
+            },
+        )
+
+    def test_malformed_core_schema_advertisement_is_not_silently_normalized(self):
+        bridge = analyze_correspondences([])
+        for schemas in (
+            {"pyowl-core/structural-columns": True},
+            {"pyowl-core/structural-columns": 0},
+            {1: 1},
+            (),
+        ):
+            ontology = types.SimpleNamespace(
+                capabilities=types.SimpleNamespace(
+                    features=frozenset(),
+                    encoded_view_schemas=schemas,
+                    backend="python",
+                )
+            )
+            with (
+                self.subTest(schemas=schemas),
+                self.assertRaisesRegex(TypeError, "encoded"),
+            ):
+                build_coherence_provenance(
+                    ontology,
+                    bridge,
+                    (),
+                    UnsatResult((), "hermit", 0.1),
+                    requested_reasoner="hermit",
+                    timeout_s=None,
+                )
+
 
 class TestDeferredRealDataComparison(unittest.TestCase):
     def test_native_comparator_scores_the_exact_hash_bound_bytes(self):
@@ -1119,6 +1220,14 @@ class TestConcreteCoreProvenance(unittest.TestCase):
         self.assertEqual(core["fingerprints"]["logical"], composite.logical_fingerprint.hex)
         self.assertEqual([item["role"] for item in core["roles"]], ["source", "target"])
         self.assertEqual(len(core["documents"]), 2)
+        handoff = provenance["compiler_handoff"]
+        self.assertEqual(
+            handoff["core_encoded_view_schemas"],
+            dict(composite.capabilities.encoded_view_schemas),
+        )
+        self.assertEqual(handoff["owner_kind"], "composite")
+        self.assertEqual(handoff["storage_kind"], composite.capabilities.backend)
+        self.assertNotIn("compilation_path", handoff)
         encoded = canonical_provenance_json(provenance)
         self.assertNotIn("urn:document:source", encoded)
         self.assertNotIn("urn:document:target", encoded)
