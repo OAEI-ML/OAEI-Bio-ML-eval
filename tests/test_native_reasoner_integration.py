@@ -175,6 +175,7 @@ class TestConcreteELKIntegration(_FixtureMixin, unittest.TestCase):
         transport = report["provenance"]["reasoner"]["transport"]  # type: ignore[index]
         self.assertEqual(transport["mode"], "core-wire-worker")
         self.assertTrue(transport["wire_verified"])
+        self.assertTrue(transport["mmap_verified"])
         self.assertEqual(transport["owl_parse_count"], 0)
         self.assertGreater(transport["wire_bytes"], 0)
 

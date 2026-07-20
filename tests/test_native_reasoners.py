@@ -28,6 +28,7 @@ from oaei_bioml_eval.coherence.native_reasoners import (
     NativeReasonerUnavailableError,
     NativeWorkerError,
     _backend_metadata,
+    _elk_worker_entry,
     _encode_core_wire,
     _run_elk_worker,
 )
@@ -217,7 +218,8 @@ def _pyelk_module() -> types.ModuleType:
     return module
 
 
-def _success_worker(connection, payload, fingerprints):
+def _success_worker(connection, wire_path, fingerprints):
+    payload = Path(wire_path).read_bytes()
     response = {
         "ok": True,
         "result": {
@@ -229,6 +231,7 @@ def _success_worker(connection, payload, fingerprints):
             },
             "profile": {"complete": True, "reasons": []},
             "wire_verified": fingerprints == {"logical_fingerprint": "a" * 64},
+            "mmap_verified": True,
             "owl_parse_count": 0,
             "payload_sha256": __import__("hashlib").sha256(payload).hexdigest(),
         },
@@ -237,14 +240,14 @@ def _success_worker(connection, payload, fingerprints):
     connection.close()
 
 
-def _sleep_worker(connection, payload, fingerprints):
-    del payload, fingerprints
+def _sleep_worker(connection, wire_path, fingerprints):
+    del wire_path, fingerprints
     time.sleep(5)
     connection.close()
 
 
-def _silent_worker(connection, payload, fingerprints):
-    del payload, fingerprints
+def _silent_worker(connection, wire_path, fingerprints):
+    del wire_path, fingerprints
     connection.close()
 
 
@@ -578,6 +581,7 @@ class TestELKAdapter(unittest.TestCase):
             {"name": "python", "package_version": "0.1.0.dev0"},
             {"complete": True, "reasons": []},
             True,
+            True,
             0,
         )
         with (
@@ -600,6 +604,7 @@ class TestELKAdapter(unittest.TestCase):
         self.assertEqual(result.unsatisfiable, (A,))
         transport = result.provenance["transport"]
         self.assertTrue(transport["wire_verified"])
+        self.assertTrue(transport["mmap_verified"])
         self.assertEqual(transport["owl_parse_count"], 0)
 
     def test_bounded_call_requires_the_frozen_core_wire_api(self):
@@ -620,30 +625,43 @@ class TestELKAdapter(unittest.TestCase):
 
     def test_unverified_or_reparsed_worker_result_is_rejected(self):
         envelope = CoreWireEnvelope(b"wire", {}, (1, 0), "0.1.0.dev0")
-        outcome = ELKWorkerResult(
-            (),
-            False,
-            {"package_version": "0.1.0.dev0"},
-            {"complete": True, "reasons": []},
-            False,
-            1,
-        )
-        with (
-            mock.patch(
-                "oaei_bioml_eval.coherence.native_reasoners._load_pyelk_api",
-                return_value=object(),
-            ),
-            mock.patch(
-                "oaei_bioml_eval.coherence.native_reasoners._encode_core_wire",
-                return_value=envelope,
-            ),
-            mock.patch(
-                "oaei_bioml_eval.coherence.native_reasoners._run_elk_worker",
-                return_value=outcome,
-            ),
-            self.assertRaisesRegex(NativeWorkerError, "zero OWL parses"),
+        for wire_verified, mmap_verified, owl_parse_count in (
+            (False, True, 0),
+            (True, False, 0),
+            (True, True, 1),
         ):
-            ELKReasoner().unsatisfiable_classes_view(object(), which="elk", timeout_s=1.0)
+            outcome = ELKWorkerResult(
+                (),
+                False,
+                {"package_version": "0.1.0.dev0"},
+                {"complete": True, "reasons": []},
+                wire_verified,
+                mmap_verified,
+                owl_parse_count,
+            )
+            with (
+                self.subTest(
+                    wire_verified=wire_verified,
+                    mmap_verified=mmap_verified,
+                    owl_parse_count=owl_parse_count,
+                ),
+                mock.patch(
+                    "oaei_bioml_eval.coherence.native_reasoners._load_pyelk_api",
+                    return_value=object(),
+                ),
+                mock.patch(
+                    "oaei_bioml_eval.coherence.native_reasoners._encode_core_wire",
+                    return_value=envelope,
+                ),
+                mock.patch(
+                    "oaei_bioml_eval.coherence.native_reasoners._run_elk_worker",
+                    return_value=outcome,
+                ),
+                self.assertRaisesRegex(NativeWorkerError, "verified core mmap"),
+            ):
+                ELKReasoner().unsatisfiable_classes_view(
+                    object(), which="elk", timeout_s=1.0
+                )
 
     def test_inconsistent_elk_result_expands_to_the_full_signature(self):
         _ELKSession.inconsistent = True
@@ -685,6 +703,7 @@ class TestWireWorker(unittest.TestCase):
         result = _run_elk_worker(self.envelope, timeout_s=5.0, entrypoint=_success_worker)
         self.assertEqual(result.unsatisfiable, (A, B))
         self.assertTrue(result.wire_verified)
+        self.assertTrue(result.mmap_verified)
         self.assertEqual(result.owl_parse_count, 0)
 
     def test_timeout_terminates_worker(self):
@@ -697,6 +716,82 @@ class TestWireWorker(unittest.TestCase):
         with self.assertRaises(NativeWorkerError):
             _run_elk_worker(self.envelope, timeout_s=5.0, entrypoint=_silent_worker)
 
+    def test_worker_retains_verified_mmap_owner_through_classification(self):
+        events = []
+
+        class Fingerprint:
+            hex = "a" * 64
+
+        class MappedOntology:
+            capabilities = types.SimpleNamespace(
+                features=frozenset({"wire-verified", "mmap-snapshot"})
+            )
+            structural_fingerprint = Fingerprint()
+            logical_fingerprint = Fingerprint()
+            signature_fingerprint = Fingerprint()
+
+            def close(self):
+                events.append("close")
+
+        mapped = MappedOntology()
+        core = types.ModuleType("pyowl_core")
+
+        def open_snapshot(path, *, mmap, verify):
+            self.assertEqual(path, "/tmp/test.pyocore")
+            self.assertTrue(mmap)
+            self.assertTrue(verify)
+            events.append("open")
+            return mapped
+
+        core.open_snapshot = open_snapshot
+
+        class Connection:
+            payload = b""
+            closed = False
+
+            def send_bytes(self, payload):
+                self.payload = payload
+
+            def close(self):
+                self.closed = True
+
+        connection = Connection()
+
+        def classify(ontology):
+            self.assertIs(ontology, mapped)
+            self.assertEqual(events, ["open"])
+            events.append("classify")
+            return {
+                "unsatisfiable": [],
+                "inconsistent": False,
+                "reasoner": {"package_version": "0.1.0.dev0"},
+                "profile": {"complete": True, "reasons": []},
+            }
+
+        expected = {
+            "structural_fingerprint": "a" * 64,
+            "logical_fingerprint": "a" * 64,
+            "signature_fingerprint": "a" * 64,
+        }
+        with (
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners._classify_elk_identity",
+                side_effect=classify,
+            ),
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                return_value=core,
+            ),
+        ):
+            _elk_worker_entry(connection, "/tmp/test.pyocore", expected)
+
+        response = json.loads(connection.payload)
+        self.assertTrue(response["ok"])
+        self.assertTrue(response["result"]["mmap_verified"])
+        self.assertEqual(response["result"]["owl_parse_count"], 0)
+        self.assertEqual(events, ["open", "classify", "close"])
+        self.assertTrue(connection.closed)
+
     def test_envelope_records_the_emitted_wire_minor_not_the_capability_max(self):
         core = types.ModuleType("pyowl_core")
         core.__version__ = "0.1.0.dev0"
@@ -706,11 +801,12 @@ class TestWireWorker(unittest.TestCase):
             del ontology
             return b"PYOCORE\0\x01\x00\x00\x00"
 
-        def decode_snapshot(payload):
-            return payload
+        def open_snapshot(path, *, mmap, verify):
+            del path, mmap, verify
+            return object()
 
         core.encode_snapshot = encode_snapshot
-        core.decode_snapshot = decode_snapshot
+        core.open_snapshot = open_snapshot
 
         class Fingerprint:
             hex = "a" * 64

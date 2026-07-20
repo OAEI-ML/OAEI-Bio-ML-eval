@@ -15,10 +15,12 @@ import json
 import math
 import multiprocessing
 import re
+import tempfile
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from multiprocessing.connection import Connection
+from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
@@ -162,6 +164,7 @@ class ELKWorkerResult:
     reasoner: Mapping[str, JsonValue]
     profile: Mapping[str, JsonValue]
     wire_verified: bool
+    mmap_verified: bool
     owl_parse_count: int
 
 
@@ -240,7 +243,7 @@ class HermiTReasoner(CoherenceReasoner):
 
 
 class ELKReasoner(CoherenceReasoner):
-    """OWL 2 EL adapter; bounded calls cross a verified core-wire worker."""
+    """OWL 2 EL adapter; bounded calls cross a verified core mmap worker."""
 
     name = "elk"
     def unsatisfiable_classes_view(
@@ -267,9 +270,13 @@ class ELKReasoner(CoherenceReasoner):
         else:
             envelope = _encode_core_wire(ontology)
             outcome = _run_elk_worker(envelope, timeout_s=timeout_s)
-            if not outcome.wire_verified or outcome.owl_parse_count != 0:
+            if (
+                not outcome.wire_verified
+                or not outcome.mmap_verified
+                or outcome.owl_parse_count != 0
+            ):
                 raise NativeWorkerError(
-                    "pyELK worker did not prove verified core-wire decode with zero OWL parses"
+                    "pyELK worker did not prove verified core mmap with zero OWL parses"
                 )
             raw = {
                 "unsatisfiable": list(outcome.unsatisfiable),
@@ -280,6 +287,7 @@ class ELKReasoner(CoherenceReasoner):
             transport = {
                 "mode": "core-wire-worker",
                 "wire_verified": outcome.wire_verified,
+                "mmap_verified": outcome.mmap_verified,
                 "owl_parse_count": outcome.owl_parse_count,
                 "wire_bytes": len(envelope.payload),
                 "wire_sha256": hashlib.sha256(envelope.payload).hexdigest(),
@@ -730,13 +738,13 @@ def _elk_reasons(values: object) -> list[JsonValue]:
 def _encode_core_wire(ontology: object) -> CoreWireEnvelope:
     core = importlib.import_module("pyowl_core")
     encoder = getattr(core, "encode_snapshot", None)
-    decoder = getattr(core, "decode_snapshot", None)
+    opener = getattr(core, "open_snapshot", None)
     version = getattr(core, "WIRE_FORMAT_VERSION", None)
     missing = tuple(
         name
         for name, value in (
             ("encode_snapshot", encoder),
-            ("decode_snapshot", decoder),
+            ("open_snapshot", opener),
             ("WIRE_FORMAT_VERSION", version),
         )
         if value is None or (name != "WIRE_FORMAT_VERSION" and not callable(value))
@@ -806,7 +814,7 @@ def _view_fingerprints(ontology: object) -> dict[str, str]:
     return values
 
 
-WorkerEntrypoint: TypeAlias = Callable[[Connection, bytes, Mapping[str, str]], None]
+WorkerEntrypoint: TypeAlias = Callable[[Connection, str, Mapping[str, str]], None]
 
 
 def _run_elk_worker(
@@ -815,40 +823,45 @@ def _run_elk_worker(
     timeout_s: float,
     entrypoint: WorkerEntrypoint | None = None,
 ) -> ELKWorkerResult:
-    """Run a bytes-only worker and terminate it at the exact wall-clock gate."""
+    """Run one verified mmap worker and terminate it at the wall-clock gate."""
 
     _validate_timeout(timeout_s)
     target = entrypoint or _elk_worker_entry
     context = multiprocessing.get_context("spawn")
-    parent, child = context.Pipe(duplex=False)
-    process = context.Process(
-        target=target,
-        args=(child, envelope.payload, dict(envelope.fingerprints)),
-        name="oaei-pyelk-wire",
-    )
-    started = False
-    try:
-        process.start()
-        started = True
-        child.close()
-        if not parent.poll(timeout_s):
-            _terminate_process(process)
-            raise ELKTimeoutError(f"pyELK classification exceeded {timeout_s}s")
+    with tempfile.TemporaryDirectory(prefix="oaei-core-wire-") as directory:
+        wire_path = Path(directory) / "ontology.pyocore"
+        written = wire_path.write_bytes(envelope.payload)
+        if written != len(envelope.payload):
+            raise NativeWorkerError("failed to persist the complete core wire artifact")
+        parent, child = context.Pipe(duplex=False)
+        process = context.Process(
+            target=target,
+            args=(child, str(wire_path), dict(envelope.fingerprints)),
+            name="oaei-pyelk-mmap",
+        )
+        started = False
         try:
-            response = parent.recv_bytes(_MAX_WORKER_RESPONSE_BYTES)
-        except (EOFError, OSError) as error:
-            _terminate_process(process)
-            raise NativeWorkerError("pyELK worker exited without a valid response") from error
-        process.join(_WORKER_SHUTDOWN_SECONDS)
-        if started and process.is_alive():
-            _terminate_process(process)
-            raise NativeWorkerError("pyELK worker did not exit after returning a result")
-        return _decode_worker_response(response, process.exitcode)
-    finally:
-        parent.close()
-        child.close()
-        if process.is_alive():
-            _terminate_process(process)
+            process.start()
+            started = True
+            child.close()
+            if not parent.poll(timeout_s):
+                _terminate_process(process)
+                raise ELKTimeoutError(f"pyELK classification exceeded {timeout_s}s")
+            try:
+                response = parent.recv_bytes(_MAX_WORKER_RESPONSE_BYTES)
+            except (EOFError, OSError) as error:
+                _terminate_process(process)
+                raise NativeWorkerError("pyELK worker exited without a valid response") from error
+            process.join(_WORKER_SHUTDOWN_SECONDS)
+            if started and process.is_alive():
+                _terminate_process(process)
+                raise NativeWorkerError("pyELK worker did not exit after returning a result")
+            return _decode_worker_response(response, process.exitcode)
+        finally:
+            parent.close()
+            child.close()
+            if process.is_alive():
+                _terminate_process(process)
 
 
 def _terminate_process(process: Any) -> None:
@@ -864,28 +877,40 @@ def _terminate_process(process: Any) -> None:
 
 def _elk_worker_entry(
     connection: Connection,
-    payload: bytes,
+    wire_path: str,
     expected_fingerprints: Mapping[str, str],
 ) -> None:
-    """Decode one core wire payload and call only the frozen pyELK facade."""
+    """Open one verified mapped snapshot and call only the frozen pyELK facade."""
 
     try:
         core = importlib.import_module("pyowl_core")
-        decoder = getattr(core, "decode_snapshot", None)
-        if not callable(decoder):
+        opener = getattr(core, "open_snapshot", None)
+        if not callable(opener):
             raise NativeReasonerCompatibilityError(
-                "worker pyowl-core lacks decode_snapshot"
+                "worker pyowl-core lacks open_snapshot"
             )
-        ontology = decoder(payload)
-        actual = _view_fingerprints(ontology)
-        if actual != dict(expected_fingerprints):
-            raise NativeWorkerError("decoded core wire fingerprints do not match the parent")
-        result = _classify_elk_identity(ontology)
+        ontology = opener(wire_path, mmap=True, verify=True)
+        try:
+            features = frozenset(
+                str(item)
+                for item in getattr(getattr(ontology, "capabilities", None), "features", ())
+            )
+            if not {"wire-verified", "mmap-snapshot"}.issubset(features):
+                raise NativeWorkerError("core worker snapshot is not a verified mmap owner")
+            actual = _view_fingerprints(ontology)
+            if actual != dict(expected_fingerprints):
+                raise NativeWorkerError("mapped core wire fingerprints do not match the parent")
+            result = _classify_elk_identity(ontology)
+        finally:
+            close = getattr(ontology, "close", None)
+            if callable(close):
+                close()
         response: dict[str, JsonValue] = {
             "ok": True,
             "result": {
                 **result,
                 "wire_verified": True,
+                "mmap_verified": True,
                 "owl_parse_count": 0,
             },
         }
@@ -935,6 +960,7 @@ def _decode_worker_response(payload: bytes, exitcode: int | None) -> ELKWorkerRe
         reasoner=_require_mapping(result.get("reasoner"), "pyELK worker reasoner metadata"),
         profile=_require_mapping(result.get("profile"), "pyELK worker profile metadata"),
         wire_verified=_require_bool(result.get("wire_verified"), "pyELK wire verification"),
+        mmap_verified=_require_bool(result.get("mmap_verified"), "pyELK mmap verification"),
         owl_parse_count=_require_nonnegative_int(
             result.get("owl_parse_count"), "pyELK worker OWL parse count"
         ),

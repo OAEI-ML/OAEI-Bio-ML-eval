@@ -10,8 +10,8 @@ Versioning for its public package and CLI contracts.
 - Snapshot-first global, local, and repaired-reference coherence APIs accepting
   existing `pyowl_core.OntologyView` instances.
 - Zero-copy source/target composition with a canonical alignment bridge.
-- Native pyHermiT and pyELK adapters, verified-wire bounded ELK execution, and
-  deterministic `coherence-provenance/1` reports.
+- Native pyHermiT and pyELK adapters, verified-wire/mmap bounded ELK execution,
+  and deterministic `coherence-provenance/1` reports.
 - Bounded public compiler-handoff provenance for reasoner ingestion paths,
   implementation schemas, digests, and available zero-copy/copy counters.
 - A create-only NCIT–DOID schema-2 evidence capture binding the frozen baseline,
