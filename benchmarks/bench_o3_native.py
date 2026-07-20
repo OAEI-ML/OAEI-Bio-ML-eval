@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib
 import importlib.metadata
 import json
@@ -20,9 +21,11 @@ from oaei_bioml_eval.coherence.bridge import (
     compose_alignment_views,
     named_class_iris,
 )
+from oaei_bioml_eval.coherence.native_reasoners import _backend_metadata
 from oaei_bioml_eval.coherence.provenance import (
     build_coherence_provenance,
     canonical_provenance_json,
+    sorted_line_sha256,
 )
 from oaei_bioml_eval.coherence.reasoner import UnsatResult
 
@@ -36,12 +39,14 @@ def _peak_rss_bytes() -> int:
     return int(value if sys.platform == "darwin" else value * 1024)
 
 
-def _measure(function: Callable[[], T]) -> tuple[T, float, int]:
+def _measure(function: Callable[[], T]) -> tuple[T, float, float, int]:
     rss_before = _peak_rss_bytes()
-    started = time.perf_counter()
+    wall_started = time.perf_counter()
+    cpu_started = time.process_time()
     value = function()
-    elapsed = time.perf_counter() - started
-    return value, elapsed, max(0, _peak_rss_bytes() - rss_before)
+    cpu_elapsed = time.process_time() - cpu_started
+    wall_elapsed = time.perf_counter() - wall_started
+    return value, wall_elapsed, cpu_elapsed, max(0, _peak_rss_bytes() - rss_before)
 
 
 def _ontology_bytes(class_count: int, *, source: bool) -> bytes:
@@ -69,24 +74,32 @@ def _entity_iris(values: Iterable[object]) -> tuple[str, ...]:
     return tuple(sorted(iris))
 
 
-def _backend_record(backend: object) -> dict[str, object]:
-    record: dict[str, object] = {}
-    for name in (
-        "name",
-        "implementation_version",
-        "ir_schema_version",
-        "ir_major",
-        "ir_minor",
-        "accelerated",
-        "native_available",
-        "requested_workers",
-        "effective_workers",
-        "fallback_reason",
-    ):
-        value = getattr(backend, name, None)
-        if value is None or isinstance(value, (str, int, float, bool)):
-            record[name] = value
-    return record
+def _package_version(module: object, distribution: str) -> str:
+    version = getattr(module, "__version__", None)
+    if isinstance(version, str) and version:
+        return version
+    return importlib.metadata.version(distribution)
+
+
+def _retains_identity(root: object, expected: object) -> bool:
+    """Inspect only public composition/overlay ownership links."""
+
+    pending = [root]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if current is expected:
+            return True
+        identity = id(current)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        base = getattr(current, "base", None)
+        if base is not None:
+            pending.append(base)
+        for member in getattr(current, "members", ()):
+            pending.append(getattr(member, "view", member))
+    return False
 
 
 def _reason(
@@ -96,24 +109,37 @@ def _reason(
     reasoner: str,
     backend: str,
     timeout_s: float | None,
-) -> tuple[tuple[str, ...], bool, Mapping[str, object], dict[str, float], dict[str, int]]:
-    timings: dict[str, float] = {}
+) -> tuple[
+    tuple[str, ...],
+    bool,
+    Mapping[str, object],
+    dict[str, float],
+    dict[str, float],
+    dict[str, int],
+]:
+    wall: dict[str, float] = {}
+    cpu: dict[str, float] = {}
     rss: dict[str, int] = {}
     if reasoner == "elk":
         module = importlib.import_module("pyelk")
         if backend not in {"auto", "python", "rust"}:
             raise ValueError("pyELK backend must be auto, python, or rust")
         config = module.ReasonerConfig(backend=backend)
-        session, timings["reasoner_compile"], rss["reasoner_compile"] = _measure(
-            lambda: module.Reasoner(ontology, config)
-        )
+        (
+            session,
+            wall["reasoner_compile"],
+            cpu["reasoner_compile"],
+            rss["reasoner_compile"],
+        ) = _measure(lambda: module.Reasoner(ontology, config))
         try:
-            consistency, timings["consistency"], rss["consistency"] = _measure(
+            if session.ontology is not ontology:
+                raise RuntimeError("pyELK did not retain the supplied composite by identity")
+            consistency, wall["consistency"], cpu["consistency"], rss["consistency"] = _measure(
                 session.is_consistent
             )
             consistent = consistency.value
-            taxonomy, timings["classification"], rss["classification"] = _measure(
-                session.classify
+            taxonomy, wall["classification"], cpu["classification"], rss["classification"] = (
+                _measure(session.classify)
             )
             unsatisfiable = (
                 denominator if not consistent else _entity_iris(taxonomy.value.bottom.members)
@@ -130,15 +156,20 @@ def _reason(
                     for issue in taxonomy.reasons
                 ],
             }
+            package_version = _package_version(module, "pyelk-reasoner")
             metadata = {
                 "schema": "native-reasoner-provenance/1",
                 "package": "pyELK",
-                "package_version": importlib.metadata.version("pyelk-reasoner"),
-                "backend": _backend_record(session.backend),
-                "transport": {"mode": "in-process-identity"},
+                "package_version": package_version,
+                "backend": _backend_metadata(session, package_version),
+                "transport": {
+                    "mode": "in-process-identity",
+                    "ontology_identity": True,
+                    "wire_encode_calls": 0,
+                },
                 "profile": profile,
             }
-            return unsatisfiable, not consistent, metadata, timings, rss
+            return unsatisfiable, not consistent, metadata, wall, cpu, rss
         finally:
             session.close()
 
@@ -146,31 +177,42 @@ def _reason(
     if backend not in {"auto", "python", "native", "verify"}:
         raise ValueError("pyHermiT backend must be auto, python, native, or verify")
     config = module.ReasonerConfig(backend=backend, timeout=timeout_s)
-    session, timings["reasoner_compile"], rss["reasoner_compile"] = _measure(
-        lambda: module.Reasoner(ontology, config=config)
-    )
+    (
+        session,
+        wall["reasoner_compile"],
+        cpu["reasoner_compile"],
+        rss["reasoner_compile"],
+    ) = _measure(lambda: module.Reasoner(ontology, config=config))
     try:
-        consistent, timings["consistency"], rss["consistency"] = _measure(
+        if session.ontology is not ontology:
+            raise RuntimeError("pyHermiT did not retain the supplied composite by identity")
+        consistent, wall["consistency"], cpu["consistency"], rss["consistency"] = _measure(
             session.is_consistent
         )
         if consistent:
-            values, timings["classification"], rss["classification"] = _measure(
+            values, wall["classification"], cpu["classification"], rss["classification"] = _measure(
                 session.unsatisfiable_classes
             )
             unsatisfiable = _entity_iris(values)
         else:
-            timings["classification"] = 0.0
+            wall["classification"] = 0.0
+            cpu["classification"] = 0.0
             rss["classification"] = 0
             unsatisfiable = denominator
+        package_version = _package_version(module, "pyHermiT")
         metadata = {
             "schema": "native-reasoner-provenance/1",
             "package": "pyHermiT",
-            "package_version": importlib.metadata.version("pyHermiT"),
-            "backend": _backend_record(session.backend),
-            "transport": {"mode": "in-process-identity"},
+            "package_version": package_version,
+            "backend": _backend_metadata(session, package_version),
+            "transport": {
+                "mode": "in-process-identity",
+                "ontology_identity": True,
+                "wire_encode_calls": 0,
+            },
             "profile": {"complete": True, "reasons": []},
         }
-        return unsatisfiable, not consistent, metadata, timings, rss
+        return unsatisfiable, not consistent, metadata, wall, cpu, rss
     finally:
         session.dispose()
 
@@ -183,17 +225,20 @@ def run(
     backend: str,
     timeout_s: float | None,
 ) -> dict[str, object]:
-    timings: dict[str, float] = {}
+    wall: dict[str, float] = {}
+    cpu: dict[str, float] = {}
     rss: dict[str, int] = {}
-    source, timings["source_load"], rss["source_load"] = _measure(
+    source_bytes = _ontology_bytes(class_count, source=True)
+    target_bytes = _ontology_bytes(class_count, source=False)
+    source, wall["source_load"], cpu["source_load"], rss["source_load"] = _measure(
         lambda: pyowl_core.coerce_snapshot(
-            _ontology_bytes(class_count, source=True),
+            source_bytes,
             document_iri="urn:oaei:benchmark:source-document",
         )
     )
-    target, timings["target_load"], rss["target_load"] = _measure(
+    target, wall["target_load"], cpu["target_load"], rss["target_load"] = _measure(
         lambda: pyowl_core.coerce_snapshot(
-            _ontology_bytes(class_count, source=False),
+            target_bytes,
             document_iri="urn:oaei:benchmark:target-document",
         )
     )
@@ -204,19 +249,26 @@ def run(
         )
         for index in range(bridge_count)
     )
-    bridge, timings["bridge_normalization"], rss["bridge_normalization"] = _measure(
-        lambda: analyze_correspondences(pairs)
-    )
-    composite, timings["composition"], rss["composition"] = _measure(
+    (
+        bridge,
+        wall["bridge_normalization"],
+        cpu["bridge_normalization"],
+        rss["bridge_normalization"],
+    ) = _measure(lambda: analyze_correspondences(pairs))
+    composite, wall["composition"], cpu["composition"], rss["composition"] = _measure(
         lambda: compose_alignment_views(source, target, bridge.correspondences)
     )
-    denominator, timings["signature"], rss["signature"] = _measure(
+    if not _retains_identity(composite, source) or not _retains_identity(composite, target):
+        raise RuntimeError("composition did not retain both source views by identity")
+    denominator, wall["signature"], cpu["signature"], rss["signature"] = _measure(
         lambda: named_class_iris(composite)
     )
-    wire, timings["wire_encode"], rss["wire_encode"] = _measure(
-        lambda: pyowl_core.encode_snapshot(composite)
-    )
-    reasoned, timings["reasoning_total"], rss["reasoning_total"] = _measure(
+    (
+        reasoned,
+        wall["reasoning_total"],
+        cpu["reasoning_total"],
+        rss["reasoning_total"],
+    ) = _measure(
         lambda: _reason(
             composite,
             denominator,
@@ -225,17 +277,25 @@ def run(
             timeout_s=timeout_s,
         )
     )
-    unsatisfiable, inconsistent, reasoner_metadata, split_timings, split_rss = reasoned
-    timings.update(split_timings)
+    (
+        unsatisfiable,
+        inconsistent,
+        reasoner_metadata,
+        split_wall,
+        split_cpu,
+        split_rss,
+    ) = reasoned
+    wall.update(split_wall)
+    cpu.update(split_cpu)
     rss.update(split_rss)
     result = UnsatResult(
         unsatisfiable,
         reasoner,
-        sum(split_timings.values()),
+        sum(split_wall.values()),
         provenance=reasoner_metadata,
         inconsistent=inconsistent,
     )
-    provenance, timings["reporting"], rss["reporting"] = _measure(
+    provenance, wall["reporting"], cpu["reporting"], rss["reporting"] = _measure(
         lambda: build_coherence_provenance(
             composite,
             bridge,
@@ -246,8 +306,32 @@ def run(
             api_options={"benchmark": True, "backend": backend},
         )
     )
+    canonical_provenance = canonical_provenance_json(provenance).encode()
+    compiler_handoff = provenance["compiler_handoff"]
+    if not isinstance(compiler_handoff, Mapping):
+        raise RuntimeError("provenance omitted compiler handoff evidence")
+    public_counters = compiler_handoff.get("counters")
+    counters = dict(public_counters) if isinstance(public_counters, Mapping) else {}
+    ingestion_path = compiler_handoff.get("ingestion_path")
+    materialized_rows = counters.get("materialized_scalar_rows")
+    staging_copy_bytes = counters.get("encoded_staging_copy_bytes")
+    required_counter_names = (
+        "base_flattening_bytes",
+        "parser_calls",
+        "per_row_ffi_calls",
+        "resolver_calls",
+        "wire_decoder_calls",
+        "wire_encoder_calls",
+    )
+    missing_public_counters = [name for name in required_counter_names if name not in counters]
+    complete_counter_coverage = (
+        ingestion_path == "encoded-native"
+        and not missing_public_counters
+        and ("materialized_scalar_rows" in counters or "scalar_axiom_materializations" in counters)
+        and ("encoded_staging_copy_bytes" in counters or "structural_copy_bytes" in counters)
+    )
     return {
-        "schema": "oaei-bioml-eval.o3-native-benchmark/1",
+        "schema": "oaei-bioml-eval.o3-native-benchmark/2",
         "python": sys.version.split()[0],
         "core": pyowl_core.__version__,
         "reasoner": reasoner,
@@ -257,9 +341,36 @@ def run(
         "denominator_count": len(denominator),
         "unsatisfiable_count": len(unsatisfiable),
         "inconsistent": inconsistent,
-        "wire_bytes": len(wire),
-        "provenance_bytes": len(canonical_provenance_json(provenance).encode()),
-        "seconds": timings,
+        "inputs": {
+            "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
+            "target_sha256": hashlib.sha256(target_bytes).hexdigest(),
+            "bridge_sha256": bridge.fingerprint,
+        },
+        "identity": {
+            "composite_retains_source": True,
+            "composite_retains_target": True,
+            "reasoner_retains_composite": True,
+        },
+        "compiler_handoff": dict(compiler_handoff),
+        "materialization_and_copy": {
+            "public_counters": counters,
+            "materialized_scalar_rows": materialized_rows,
+            "encoded_staging_copy_bytes": staging_copy_bytes,
+            "copied_structural_bytes": counters.get("structural_copy_bytes"),
+            "complete_public_counter_coverage": complete_counter_coverage,
+            "missing_public_counters": missing_public_counters,
+            "benchmark_wire_encode_calls": 0,
+            "selected_ingestion_path": ingestion_path,
+        },
+        "results": {
+            "denominator_sha256": sorted_line_sha256(denominator),
+            "unsatisfiable_sha256": sorted_line_sha256(unsatisfiable),
+            "composite_structural_fingerprint": composite.structural_fingerprint.hex,
+            "provenance_sha256": hashlib.sha256(canonical_provenance).hexdigest(),
+        },
+        "provenance_bytes": len(canonical_provenance),
+        "seconds": wall,
+        "cpu_seconds": cpu,
         "peak_rss_increment_bytes": rss,
         "process_peak_rss_bytes": _peak_rss_bytes(),
     }
