@@ -306,6 +306,29 @@ class TestCapabilityBoundary(unittest.TestCase):
         ):
             HermiTReasoner().unsatisfiable_classes_view(object(), which="hermit", timeout_s=1.0)
 
+    def test_module_and_installed_distribution_version_drift_fails_closed(self):
+        module = _pyelk_module()
+        module.__version__ = "0.1.0.dev0"
+        with (
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.metadata.version",
+                return_value="0.1.1",
+            ),
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                return_value=module,
+            ),
+            self.assertRaisesRegex(
+                NativeReasonerCompatibilityError,
+                "module/distribution version mismatch",
+            ),
+        ):
+            ELKReasoner().unsatisfiable_classes_view(
+                object(),
+                which="elk",
+                timeout_s=None,
+            )
+
     def test_pyelk_uses_the_distribution_name_not_the_import_name(self):
         module = _pyelk_module()
         del module.__version__

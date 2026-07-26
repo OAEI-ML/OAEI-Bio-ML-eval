@@ -467,14 +467,27 @@ def _require_exports(module: ModuleType, display_name: str, names: tuple[str, ..
 
 
 def _reasoner_version(module: ModuleType, distribution: str) -> str:
-    value = getattr(module, "__version__", None)
-    if not isinstance(value, str) or not value:
-        try:
-            value = importlib.metadata.version(distribution)
-        except importlib.metadata.PackageNotFoundError as error:
-            raise NativeReasonerCompatibilityError(
-                f"installed {distribution} exposes no package version"
-            ) from error
+    module_value = getattr(module, "__version__", None)
+    if not isinstance(module_value, str) or not module_value:
+        module_value = None
+    try:
+        distribution_value: str | None = importlib.metadata.version(distribution)
+    except importlib.metadata.PackageNotFoundError:
+        distribution_value = None
+    if module_value is None and distribution_value is None:
+        raise NativeReasonerCompatibilityError(
+            f"installed {distribution} exposes no package version"
+        )
+    if (
+        module_value is not None
+        and distribution_value is not None
+        and module_value != distribution_value
+    ):
+        raise NativeReasonerCompatibilityError(
+            f"installed {distribution} module/distribution version mismatch: "
+            f"{module_value!r} != {distribution_value!r}"
+        )
+    value = module_value if module_value is not None else cast(str, distribution_value)
     match = _VERSION.fullmatch(value)
     if match is None or tuple(map(int, match.groups()[:2])) != _EXPECTED_REASONER_LINE:
         raise NativeReasonerCompatibilityError(
