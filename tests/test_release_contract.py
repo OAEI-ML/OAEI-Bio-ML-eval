@@ -84,6 +84,24 @@ class TestReleaseContract(unittest.TestCase):
             self.assertIn(f'"{version}"', workflow)
         self.assertNotIn("setup-java", workflow)
 
+    def test_workflow_actions_are_pinned_to_commits(self) -> None:
+        action_reference = re.compile(
+            r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$"
+        )
+        for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+            for line_number, line in enumerate(
+                workflow_path.read_text(encoding="utf-8").splitlines(), start=1
+            ):
+                match = re.match(r"^\s*-\s+uses:\s+(\S+)", line)
+                if match is None:
+                    continue
+                reference = match.group(1)
+                self.assertRegex(
+                    reference,
+                    action_reference,
+                    f"{workflow_path.name}:{line_number}: {reference}",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
