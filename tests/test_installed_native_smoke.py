@@ -111,6 +111,9 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
             "core_encoded_view_schemas": {
                 installed_native_smoke._ENCODED_SCHEMA: 1
             },
+            "reasoner_encoded_schema": dict(
+                installed_native_smoke._EXPECTED_REASONER_SCHEMA
+            ),
             "ingestion_path": "encoded-native",
             "counters": counters,
         }
@@ -124,6 +127,20 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "did not select encoded-native"):
             installed_native_smoke._require_encoded_handoff(
                 scalar,
+                format_name="functional",
+                reasoner="elk",
+            )
+
+        incompatible_schema = {
+            **handoff,
+            "reasoner_encoded_schema": {
+                **installed_native_smoke._EXPECTED_REASONER_SCHEMA,
+                "schema_version": 2,
+            },
+        }
+        with self.assertRaisesRegex(RuntimeError, "exact public reasoner encoded schema"):
+            installed_native_smoke._require_encoded_handoff(
+                incompatible_schema,
                 format_name="functional",
                 reasoner="elk",
             )

@@ -31,6 +31,7 @@ from oaei_bioml_eval.coherence.native_reasoners import (
     _elk_worker_entry,
     _encode_core_wire,
     _run_elk_worker,
+    _validate_encoded_session_handoff,
 )
 from oaei_bioml_eval.coherence.provenance import (
     build_coherence_provenance,
@@ -327,6 +328,170 @@ class TestCapabilityBoundary(unittest.TestCase):
         self.assertNotIn("compiler_handoff", metadata)
         self.assertNotIn("compiler_diagnostics", metadata)
 
+    def test_encoded_session_negotiates_exact_public_core_and_reasoner_schemas(self):
+        class Requirement:
+            def __init__(self, **values):
+                self.values = values
+
+        ontology = types.SimpleNamespace(
+            capabilities=types.SimpleNamespace(
+                adapter_protocol=1,
+                model_schema=1,
+            )
+        )
+        require_compatible = mock.Mock(side_effect=lambda view, _requirement: view)
+        adapters = types.SimpleNamespace(
+            AdapterRequirement=Requirement,
+            require_compatible_view=require_compatible,
+        )
+        metadata = {
+            "name": "native",
+            "accelerated": True,
+            "core_adapter_protocol_version": 1,
+            "core_model_schema_version": 1,
+            "compiler_handoff": _compiler_handoff(),
+            "compiler_diagnostics": {"ingestion_path": "encoded-native"},
+        }
+
+        with mock.patch(
+            "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+            return_value=adapters,
+        ) as importer:
+            _validate_encoded_session_handoff(ontology, metadata)
+
+        importer.assert_called_once_with("pyowl_core.adapters")
+        requirement = require_compatible.call_args.args[1]
+        self.assertEqual(
+            requirement.values,
+            {
+                "consumer": "oaei-bioml-eval",
+                "consumer_version": "0.2.0",
+                "consumer_api": "coherence-provenance/1",
+                "package_api": (0, 1),
+                "adapter_protocol": 1,
+                "model_schema": 1,
+                "wire_major": 1,
+                "minimum_wire_minor": 0,
+                "required_encoded_view_schemas": {
+                    "pyowl-core/structural-columns": 1
+                },
+            },
+        )
+        self.assertIs(require_compatible.call_args.args[0], ontology)
+
+    def test_encoded_session_negotiation_fails_closed_without_both_envelopes(self):
+        ontology = types.SimpleNamespace(
+            capabilities=types.SimpleNamespace(
+                adapter_protocol=1,
+                model_schema=1,
+            )
+        )
+        encoded = {
+            "name": "native",
+            "accelerated": True,
+            "compiler_diagnostics": {"ingestion_path": "encoded-native"},
+        }
+        with self.assertRaisesRegex(
+            NativeReasonerCompatibilityError,
+            "lacks the public compiler_handoff",
+        ):
+            _validate_encoded_session_handoff(ontology, encoded)
+
+        class Requirement:
+            def __init__(self, **_values):
+                pass
+
+        adapters = types.SimpleNamespace(
+            AdapterRequirement=Requirement,
+            require_compatible_view=mock.Mock(
+                side_effect=RuntimeError("encoded view schema is unavailable")
+            ),
+        )
+        with (
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                return_value=adapters,
+            ),
+            self.assertRaisesRegex(
+                NativeReasonerCompatibilityError,
+                "core capability negotiation failed",
+            ),
+        ):
+            _validate_encoded_session_handoff(
+                ontology,
+                {**encoded, "compiler_handoff": _compiler_handoff()},
+            )
+
+    def test_encoded_session_rejects_identity_version_or_acceleration_contradictions(self):
+        class Requirement:
+            def __init__(self, **_values):
+                pass
+
+        ontology = types.SimpleNamespace(
+            capabilities=types.SimpleNamespace(
+                adapter_protocol=1,
+                model_schema=1,
+            )
+        )
+        base = {
+            "name": "native",
+            "accelerated": True,
+            "core_adapter_protocol_version": 1,
+            "core_model_schema_version": 1,
+            "compiler_handoff": _compiler_handoff(),
+            "compiler_diagnostics": {"ingestion_path": "encoded-native"},
+        }
+        cases = (
+            (
+                {**base, "core_model_schema_version": 2},
+                lambda view, _requirement: view,
+                "core_model_schema_version",
+            ),
+            (
+                {**base, "accelerated": False},
+                lambda view, _requirement: view,
+                "native availability",
+            ),
+            (
+                {**base, "name": "python"},
+                lambda view, _requirement: view,
+                "Python Reasoner backend",
+            ),
+            (
+                base,
+                lambda _view, _requirement: object(),
+                "changed ontology identity",
+            ),
+        )
+        for metadata, compatible, message in cases:
+            adapters = types.SimpleNamespace(
+                AdapterRequirement=Requirement,
+                require_compatible_view=compatible,
+            )
+            with (
+                self.subTest(message=message),
+                mock.patch(
+                    "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                    return_value=adapters,
+                ),
+                self.assertRaisesRegex(NativeReasonerCompatibilityError, message),
+            ):
+                _validate_encoded_session_handoff(ontology, metadata)
+
+    def test_scalar_session_does_not_require_encoded_negotiation(self):
+        with mock.patch(
+            "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module"
+        ) as importer:
+            _validate_encoded_session_handoff(
+                object(),
+                {
+                    "compiler_diagnostics": {
+                        "ingestion_path": "scalar-python",
+                    }
+                },
+            )
+        importer.assert_not_called()
+
     def test_public_compiler_diagnostics_are_bounded_and_canonical(self):
         session = types.SimpleNamespace(
             backend=_Backend(),
@@ -565,6 +730,10 @@ class TestELKAdapter(unittest.TestCase):
         self.assertTrue(_ELKSession.closed)
 
     def test_unbounded_call_records_public_compiler_diagnostics(self):
+        class Requirement:
+            def __init__(self, **_values):
+                pass
+
         diagnostics = {
             "ingestion_path": "encoded-native",
             "compiler_digest": "c" * 64,
@@ -574,6 +743,20 @@ class TestELKAdapter(unittest.TestCase):
             "encoded_buffer_count": 11,
             "encoded_staging_copy_bytes": 0,
         }
+        ontology = types.SimpleNamespace(
+            capabilities=types.SimpleNamespace(
+                adapter_protocol=1,
+                model_schema=1,
+            )
+        )
+        adapters = types.SimpleNamespace(
+            AdapterRequirement=Requirement,
+            require_compatible_view=lambda view, _requirement: view,
+        )
+        modules = {
+            "pyelk": _pyelk_module(),
+            "pyowl_core.adapters": adapters,
+        }
         with (
             mock.patch.object(
                 _ELKSession,
@@ -581,13 +764,21 @@ class TestELKAdapter(unittest.TestCase):
                 return_value=diagnostics,
                 create=True,
             ),
+            mock.patch.object(_Backend, "name", "rust"),
+            mock.patch.object(_Backend, "accelerated", True),
+            mock.patch.object(
+                _Backend,
+                "compiler_handoff",
+                _compiler_handoff(),
+                create=True,
+            ),
             mock.patch(
                 "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
-                return_value=_pyelk_module(),
+                side_effect=lambda name: modules[name],
             ),
         ):
             result = ELKReasoner().unsatisfiable_classes_view(
-                object(), which="elk", timeout_s=None
+                ontology, which="elk", timeout_s=None
             )
 
         self.assertEqual(

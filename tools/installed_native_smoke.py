@@ -32,6 +32,29 @@ MATRIX_SCHEMA = "oaei-bioml-eval.installed-native-owner-matrix/1"
 OWNER_MATRIX_SCHEMA = "oaei-bioml-eval.installed-native-format-owner-matrix/1"
 REGRESSION_MATRIX_SCHEMA = "oaei-bioml-eval.installed-native-regression-matrix/1"
 _ENCODED_SCHEMA = "pyowl-core/structural-columns"
+_ENCODED_DESCRIPTOR_SHA256 = (
+    "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5"
+)
+_ENCODED_BUFFER_WIDTHS = {
+    "field_kinds": 1,
+    "field_lengths": 8,
+    "field_values": 8,
+    "item_kinds": 1,
+    "item_lengths": 8,
+    "item_values": 8,
+    "node_field_offsets": 8,
+    "node_tags": 2,
+    "root_ids": 4,
+    "root_kinds": 1,
+    "scalar_bytes": 1,
+}
+_EXPECTED_REASONER_SCHEMA = {
+    "buffer_widths": _ENCODED_BUFFER_WIDTHS,
+    "descriptor_sha256": _ENCODED_DESCRIPTOR_SHA256,
+    "model_schema": 1,
+    "schema_name": _ENCODED_SCHEMA,
+    "schema_version": 1,
+}
 _REQUIRED_PUBLIC_COUNTERS = (
     "base_flattening_bytes",
     "parser_calls",
@@ -177,6 +200,11 @@ def _require_encoded_handoff(
     schemas = handoff.get("core_encoded_view_schemas")
     if not isinstance(schemas, Mapping) or schemas.get(_ENCODED_SCHEMA) != 1:
         raise RuntimeError(f"{label} lacks the frozen encoded structural schema")
+    reasoner_schema = handoff.get("reasoner_encoded_schema")
+    if reasoner_schema != _EXPECTED_REASONER_SCHEMA:
+        raise RuntimeError(
+            f"{label} did not negotiate the exact public reasoner encoded schema"
+        )
     if handoff.get("ingestion_path") != "encoded-native":
         raise RuntimeError(f"{label} did not select encoded-native ingestion")
     counters = handoff.get("counters")

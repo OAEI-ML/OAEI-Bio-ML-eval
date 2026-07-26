@@ -24,6 +24,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
+from .. import __version__ as OAEI_VERSION
+
 if TYPE_CHECKING:
     from pyowl_core import OntologyView
 else:
@@ -232,6 +234,7 @@ class HermiTReasoner(CoherenceReasoner):
             session = api.reasoner_type(ontology, config=config)
             _require_identity(session, ontology, "pyHermiT")
             backend = _backend_metadata(session, api.version)
+            _validate_encoded_session_handoff(ontology, backend)
             try:
                 consistent = session.is_consistent()
                 if not isinstance(consistent, bool):
@@ -730,6 +733,86 @@ def _validate_compiler_handoff(value: object) -> dict[str, JsonValue]:
     }
 
 
+def _validate_encoded_session_handoff(
+    ontology: object,
+    backend: Mapping[str, JsonValue],
+) -> None:
+    """Negotiate both public capability envelopes before accepting encoded-native."""
+
+    diagnostics = backend.get("compiler_diagnostics")
+    if not isinstance(diagnostics, Mapping) or diagnostics.get("ingestion_path") != "encoded-native":
+        return
+
+    handoff = backend.get("compiler_handoff")
+    if not isinstance(handoff, Mapping):
+        raise NativeReasonerCompatibilityError(
+            "encoded-native Reasoner lacks the public compiler_handoff attestation"
+        )
+    _validate_compiler_handoff(handoff)
+
+    try:
+        adapters = importlib.import_module("pyowl_core.adapters")
+    except ModuleNotFoundError as error:
+        if error.name not in {"pyowl_core", "pyowl_core.adapters"}:
+            raise
+        raise NativeReasonerCompatibilityError(
+            "encoded-native Reasoner requires pyowl_core.adapters negotiation"
+        ) from error
+    requirement_type = getattr(adapters, "AdapterRequirement", None)
+    require_compatible = getattr(adapters, "require_compatible_view", None)
+    if not isinstance(requirement_type, type) or not callable(require_compatible):
+        raise NativeReasonerCompatibilityError(
+            "installed pyowl-core lacks public encoded-view negotiation"
+        )
+    requirement = requirement_type(
+        consumer="oaei-bioml-eval",
+        consumer_version=OAEI_VERSION,
+        consumer_api="coherence-provenance/1",
+        package_api=(0, 1),
+        adapter_protocol=1,
+        model_schema=_ENCODED_MODEL_SCHEMA,
+        wire_major=1,
+        minimum_wire_minor=0,
+        required_encoded_view_schemas={
+            _ENCODED_SCHEMA_NAME: _ENCODED_SCHEMA_VERSION,
+        },
+    )
+    try:
+        retained = require_compatible(ontology, requirement)
+    except Exception as error:
+        raise NativeReasonerCompatibilityError(
+            f"encoded-native core capability negotiation failed: {error}"
+        ) from error
+    if retained is not ontology:
+        raise NativeReasonerCompatibilityError(
+            "pyowl-core compatibility negotiation changed ontology identity"
+        )
+
+    capabilities = getattr(ontology, "capabilities", None)
+    if capabilities is None:
+        raise NativeReasonerCompatibilityError(
+            "encoded-native ontology lacks public core capabilities"
+        )
+    expected_core_fields = {
+        "core_adapter_protocol_version": getattr(capabilities, "adapter_protocol", None),
+        "core_model_schema_version": getattr(capabilities, "model_schema", None),
+    }
+    for name, expected in expected_core_fields.items():
+        actual = backend.get(name)
+        if actual is not None and actual != expected:
+            raise NativeReasonerCompatibilityError(
+                f"encoded-native Reasoner {name} does not match the supplied core view"
+            )
+    if backend.get("accelerated") is False or backend.get("native_available") is False:
+        raise NativeReasonerCompatibilityError(
+            "encoded-native Reasoner contradicts its public native availability"
+        )
+    if backend.get("name") == "python":
+        raise NativeReasonerCompatibilityError(
+            "Python Reasoner backend cannot claim encoded-native ingestion"
+        )
+
+
 def _classify_elk_identity(
     ontology: object, *, api: _ELKAPI | None = None
 ) -> dict[str, JsonValue]:
@@ -739,6 +822,7 @@ def _classify_elk_identity(
         session = api.reasoner_type(ontology, api.config_type())
         _require_identity(session, ontology, "pyELK")
         backend = _backend_metadata(session, api.version)
+        _validate_encoded_session_handoff(ontology, backend)
         consistency = session.is_consistent()
         consistent = _reasoning_result_value(consistency, bool, "pyELK consistency")
         taxonomy_result = session.classify()
