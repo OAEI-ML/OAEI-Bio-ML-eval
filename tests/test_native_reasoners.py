@@ -28,6 +28,7 @@ from oaei_bioml_eval.coherence.native_reasoners import (
     NativeReasonerUnavailableError,
     NativeWorkerError,
     _backend_metadata,
+    _decode_worker_response,
     _elk_worker_entry,
     _encode_core_wire,
     _run_elk_worker,
@@ -1059,6 +1060,43 @@ class TestWireWorker(unittest.TestCase):
     def test_worker_exit_is_error_not_a_semantic_value(self):
         with self.assertRaises(NativeWorkerError):
             _run_elk_worker(self.envelope, timeout_s=5.0, entrypoint=_silent_worker)
+
+    def test_corrupt_wire_is_a_typed_error_and_closes_the_connection(self):
+        core = types.ModuleType("pyowl_core")
+
+        def open_snapshot(path, *, mmap, verify):
+            del path, mmap, verify
+            raise ValueError("wire checksum mismatch")
+
+        core.open_snapshot = open_snapshot
+
+        class Connection:
+            payload = b""
+            closed = False
+
+            def send_bytes(self, payload):
+                self.payload = payload
+
+            def close(self):
+                self.closed = True
+
+        connection = Connection()
+        with mock.patch(
+            "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+            return_value=core,
+        ):
+            _elk_worker_entry(
+                connection,
+                "/tmp/corrupt.pyocore",
+                {"logical_fingerprint": "a" * 64},
+            )
+
+        self.assertTrue(connection.closed)
+        with self.assertRaisesRegex(
+            NativeWorkerError,
+            "ValueError: wire checksum mismatch",
+        ):
+            _decode_worker_response(connection.payload, 0)
 
     def test_worker_retains_verified_mmap_owner_through_classification(self):
         events = []
