@@ -117,11 +117,12 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
             "ingestion_path": "encoded-native",
             "counters": counters,
         }
-        installed_native_smoke._require_encoded_handoff(
-            handoff,
-            format_name="functional",
-            reasoner="elk",
-        )
+        for reasoner in ("elk", "hermit"):
+            installed_native_smoke._require_encoded_handoff(
+                handoff,
+                format_name="functional",
+                reasoner=reasoner,
+            )
 
         scalar = {**handoff, "ingestion_path": "scalar-native"}
         with self.assertRaisesRegex(RuntimeError, "did not select encoded-native"):
@@ -163,6 +164,49 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
                 format_name="functional",
                 reasoner="elk",
             )
+        for reasoner in ("elk", "hermit"):
+            installed_native_smoke._require_encoded_handoff(
+                handoff,
+                format_name="functional:retry",
+                reasoner=reasoner,
+            )
+
+    def test_interrupted_owner_matrix_closes_mmaps_and_retry_is_clean(self) -> None:
+        import pyowl_core
+
+        from tools import installed_native_smoke
+
+        source_bytes, target_bytes = installed_native_smoke.FORMAT_FIXTURES[
+            "functional"
+        ]
+        source = pyowl_core.coerce_snapshot(
+            source_bytes,
+            document_iri="urn:oaei:test-atomicity:source",
+        )
+        target = pyowl_core.coerce_snapshot(
+            target_bytes,
+            document_iri="urn:oaei:test-atomicity:target",
+        )
+        interrupted_mapped = []
+        with (
+            self.assertRaises(KeyboardInterrupt),
+            installed_native_smoke._owner_pairs(source, target) as pairs,
+        ):
+            interrupted_mapped.extend(pairs["mmap"])
+            raise KeyboardInterrupt
+        self.assertTrue(all(owner.closed for owner in interrupted_mapped))
+
+        with installed_native_smoke._owner_pairs(source, target) as retry:
+            retried_mapped = tuple(retry["mmap"])
+            self.assertEqual(
+                installed_native_smoke._fingerprints(retried_mapped[0]),
+                installed_native_smoke._fingerprints(source),
+            )
+            self.assertEqual(
+                installed_native_smoke._fingerprints(retried_mapped[1]),
+                installed_native_smoke._fingerprints(target),
+            )
+        self.assertTrue(all(owner.closed for owner in retried_mapped))
 
 
 @unittest.skipUnless(_HAS_STACK, "installed core, pyELK, and pyHermiT are unavailable")

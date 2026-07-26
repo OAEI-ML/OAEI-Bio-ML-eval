@@ -730,9 +730,54 @@ class TestHermiTAdapter(unittest.TestCase):
         _HermiTSession.mode = "timeout"
         with self.assertRaises(HermiTTimeoutError):
             self._classify()
+        self.assertTrue(_HermiTSession.disposed)
+
+        _HermiTSession.mode = "consistent"
+        retry = self._classify()
+        self.assertEqual(retry.unsatisfiable, (A, B))
+        self.assertTrue(_HermiTSession.disposed)
+
         _HermiTSession.mode = "failure"
         with self.assertRaisesRegex(RuntimeError, "semantic failure"):
             self._classify()
+
+    def test_negotiation_failure_disposes_session_and_retry_is_clean(self):
+        validator = mock.Mock(
+            side_effect=(
+                NativeReasonerCompatibilityError("incompatible encoded schema"),
+                None,
+            )
+        )
+        with (
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners."
+                "_validate_encoded_session_handoff",
+                validator,
+            ),
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                return_value=_pyhermit_module(),
+            ),
+        ):
+            with self.assertRaisesRegex(
+                NativeReasonerCompatibilityError,
+                "incompatible encoded schema",
+            ):
+                HermiTReasoner().unsatisfiable_classes_view(
+                    object(),
+                    which="hermit",
+                    timeout_s=2.5,
+                )
+            self.assertTrue(_HermiTSession.disposed)
+
+            retry = HermiTReasoner().unsatisfiable_classes_view(
+                object(),
+                which="hermit",
+                timeout_s=2.5,
+            )
+        self.assertEqual(retry.unsatisfiable, (A, B))
+        self.assertTrue(_HermiTSession.disposed)
+        self.assertEqual(validator.call_count, 2)
 
 
 class TestELKAdapter(unittest.TestCase):
@@ -751,6 +796,44 @@ class TestELKAdapter(unittest.TestCase):
         self.assertEqual(result.unsatisfiable, (A, B))
         self.assertEqual(result.provenance["transport"]["mode"], "in-process-identity")
         self.assertTrue(_ELKSession.closed)
+
+    def test_negotiation_failure_closes_session_and_retry_is_clean(self):
+        validator = mock.Mock(
+            side_effect=(
+                NativeReasonerCompatibilityError("incompatible encoded schema"),
+                None,
+            )
+        )
+        with (
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners."
+                "_validate_encoded_session_handoff",
+                validator,
+            ),
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                return_value=_pyelk_module(),
+            ),
+        ):
+            with self.assertRaisesRegex(
+                NativeReasonerCompatibilityError,
+                "incompatible encoded schema",
+            ):
+                ELKReasoner().unsatisfiable_classes_view(
+                    object(),
+                    which="elk",
+                    timeout_s=None,
+                )
+            self.assertTrue(_ELKSession.closed)
+
+            retry = ELKReasoner().unsatisfiable_classes_view(
+                object(),
+                which="elk",
+                timeout_s=None,
+            )
+        self.assertEqual(retry.unsatisfiable, (A, B))
+        self.assertTrue(_ELKSession.closed)
+        self.assertEqual(validator.call_count, 2)
 
     def test_unbounded_call_records_public_compiler_diagnostics(self):
         class Requirement:
@@ -958,11 +1041,20 @@ class TestWireWorker(unittest.TestCase):
         self.assertTrue(result.mmap_verified)
         self.assertEqual(result.owl_parse_count, 0)
 
-    def test_timeout_terminates_worker(self):
+    def test_timeout_terminates_worker_and_retry_is_clean(self):
         started = time.perf_counter()
         with self.assertRaises(ELKTimeoutError):
             _run_elk_worker(self.envelope, timeout_s=0.05, entrypoint=_sleep_worker)
         self.assertLess(time.perf_counter() - started, 2.0)
+        retry = _run_elk_worker(
+            self.envelope,
+            timeout_s=5.0,
+            entrypoint=_success_worker,
+        )
+        self.assertEqual(retry.unsatisfiable, (A, B))
+        self.assertTrue(retry.wire_verified)
+        self.assertTrue(retry.mmap_verified)
+        self.assertEqual(retry.owl_parse_count, 0)
 
     def test_worker_exit_is_error_not_a_semantic_value(self):
         with self.assertRaises(NativeWorkerError):
