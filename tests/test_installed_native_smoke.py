@@ -171,6 +171,31 @@ class TestInstalledNativeOwnerMatrix(unittest.TestCase):
                 self.assertTrue(owner["composite_owner_identity"])
                 self.assertEqual(set(owner["reasoners"]), {"elk", "hermit"})
 
+    def test_pinned_multi_level_and_control_regressions_match(self) -> None:
+        from tools import installed_native_smoke
+
+        result = installed_native_smoke.run_regression_matrix()
+
+        self.assertEqual(
+            result["schema"],
+            installed_native_smoke.REGRESSION_MATRIX_SCHEMA,
+        )
+        self.assertTrue(result["pinned_semantic_parity"])
+        self.assertFalse(result["encoded_required"])
+        self.assertEqual(
+            set(result["cases"]),
+            {
+                "already_incoherent",
+                "equivalence_clash",
+                "equivalence_clean",
+                "subsumption_forward_clash",
+                "subsumption_reverse_clash",
+            },
+        )
+        for evidence in result["cases"].values():
+            self.assertTrue(evidence["composite_owner_identity"])
+            self.assertEqual(set(evidence["reasoners"]), {"elk", "hermit"})
+
 
 if __name__ == "__main__":
     unittest.main()

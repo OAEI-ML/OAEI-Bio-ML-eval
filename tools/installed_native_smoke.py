@@ -7,7 +7,7 @@ import argparse
 import gc
 import json
 import tempfile
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
@@ -16,7 +16,11 @@ import pyowl_core
 
 import oaei_bioml_eval
 from oaei_bioml_eval.coherence import score_reference_coherence
-from oaei_bioml_eval.coherence.bridge import compose_alignment_views
+from oaei_bioml_eval.coherence.bridge import (
+    Correspondence,
+    compose_alignment_views,
+)
+from oaei_bioml_eval.coherence.provenance import sorted_line_sha256
 from oaei_bioml_eval.coherence.report import ReasonerName
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +30,7 @@ B = "http://ex.org/B"
 
 MATRIX_SCHEMA = "oaei-bioml-eval.installed-native-owner-matrix/1"
 OWNER_MATRIX_SCHEMA = "oaei-bioml-eval.installed-native-format-owner-matrix/1"
+REGRESSION_MATRIX_SCHEMA = "oaei-bioml-eval.installed-native-regression-matrix/1"
 _ENCODED_SCHEMA = "pyowl-core/structural-columns"
 _REQUIRED_PUBLIC_COUNTERS = (
     "base_flattening_bytes",
@@ -259,8 +264,10 @@ def _score_owner_pair(
     format_name: str,
     owner_name: str,
     require_encoded: bool,
+    correspondences: Iterable[Correspondence] = ((A, B, "="),),
 ) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
-    composite = compose_alignment_views(source, target, ((A, B, "="),))
+    retained_correspondences = tuple(correspondences)
+    composite = compose_alignment_views(source, target, retained_correspondences)
     members = tuple(member.view for member in composite.members)
     if members != (source, target) or members[0] is not source or members[1] is not target:
         raise RuntimeError(
@@ -270,7 +277,7 @@ def _score_owner_pair(
     reasoner_results: dict[str, dict[str, object]] = {}
     for reasoner in ("hermit", "elk"):
         report = score_reference_coherence(
-            [(A, B, "=")],
+            retained_correspondences,
             source,
             target,
             reasoner=cast(ReasonerName, reasoner),
@@ -461,6 +468,69 @@ def run_format_owner_matrix(*, require_encoded: bool = False) -> dict[str, objec
     }
 
 
+def run_regression_matrix(*, require_encoded: bool = False) -> dict[str, object]:
+    """Run every pinned semantic case, including multi-level incoherence."""
+
+    baseline_path = ROOT / "tests" / "baselines" / "robot-1.9.10.json"
+    baseline = cast(Mapping[str, Any], json.loads(baseline_path.read_text(encoding="utf-8")))
+    cases = cast(Mapping[str, Mapping[str, Any]], baseline["cases"])
+    observed: dict[str, dict[str, object]] = {}
+    for case_name, expected in sorted(cases.items()):
+        source = pyowl_core.coerce_snapshot(
+            FIXTURES / str(expected["source"]),
+            document_iri=f"urn:oaei:installed-regression:{case_name}:source",
+        )
+        target = pyowl_core.coerce_snapshot(
+            FIXTURES / str(expected["target"]),
+            document_iri=f"urn:oaei:installed-regression:{case_name}:target",
+        )
+        correspondences = tuple(
+            cast(Correspondence, tuple(item))
+            for item in cast(Iterable[Iterable[str]], expected["bridge"])
+        )
+        evidence, _semantic_results = _score_owner_pair(
+            source,
+            target,
+            format_name=f"regression:{case_name}",
+            owner_name="direct",
+            require_encoded=require_encoded,
+            correspondences=correspondences,
+        )
+        reasoners = cast(Mapping[str, Mapping[str, Any]], evidence["reasoners"])
+        named_classes = tuple(cast(Iterable[str], expected["named_classes"]))
+        for reasoner, result in reasoners.items():
+            wanted = tuple(cast(Iterable[str], expected[f"{reasoner}_unsatisfiable"]))
+            if (
+                result["reasoner_used"] != reasoner
+                or result["union_class_count"] != len(named_classes)
+                or result["unsatisfiable_count"] != len(wanted)
+                or result["denominator_sha256"] != sorted_line_sha256(named_classes)
+                or result["numerator_sha256"] != sorted_line_sha256(wanted)
+            ):
+                raise RuntimeError(
+                    f"{case_name}/{reasoner} diverged from the pinned semantic oracle"
+                )
+        observed[case_name] = evidence
+
+    required = {
+        "already_incoherent",
+        "equivalence_clash",
+        "equivalence_clean",
+        "subsumption_forward_clash",
+        "subsumption_reverse_clash",
+    }
+    if set(observed) != required:
+        raise RuntimeError(
+            f"installed semantic baseline has unexpected cases: {sorted(observed)!r}"
+        )
+    return {
+        "schema": REGRESSION_MATRIX_SCHEMA,
+        "encoded_required": require_encoded,
+        "pinned_semantic_parity": True,
+        "cases": observed,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
@@ -474,16 +544,27 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="also cross direct, decoded, mmap, and overlay source/target owners",
     )
+    mode.add_argument(
+        "--regression-matrix",
+        action="store_true",
+        help="run every pinned semantic case, including multi-level incoherence",
+    )
     parser.add_argument(
         "--require-encoded",
         action="store_true",
         help="fail unless every matrix lane publishes complete encoded-native zero-work evidence",
     )
     args = parser.parse_args(argv)
-    if args.require_encoded and not (args.matrix or args.owner_matrix):
-        parser.error("--require-encoded requires --matrix or --owner-matrix")
+    if args.require_encoded and not (
+        args.matrix or args.owner_matrix or args.regression_matrix
+    ):
+        parser.error(
+            "--require-encoded requires --matrix, --owner-matrix, or --regression-matrix"
+        )
     if args.owner_matrix:
         result = run_format_owner_matrix(require_encoded=args.require_encoded)
+    elif args.regression_matrix:
+        result = run_regression_matrix(require_encoded=args.require_encoded)
     elif args.matrix:
         result = run_format_matrix(require_encoded=args.require_encoded)
     else:
