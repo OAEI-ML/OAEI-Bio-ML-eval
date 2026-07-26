@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import gc
 import json
+import math
 import tempfile
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
@@ -31,6 +32,9 @@ B = "http://ex.org/B"
 MATRIX_SCHEMA = "oaei-bioml-eval.installed-native-owner-matrix/1"
 OWNER_MATRIX_SCHEMA = "oaei-bioml-eval.installed-native-format-owner-matrix/1"
 REGRESSION_MATRIX_SCHEMA = "oaei-bioml-eval.installed-native-regression-matrix/1"
+WORKER_REGRESSION_MATRIX_SCHEMA = (
+    "oaei-bioml-eval.installed-native-worker-regression-matrix/1"
+)
 _ENCODED_SCHEMA = "pyowl-core/structural-columns"
 _ENCODED_DESCRIPTOR_SHA256 = (
     "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5"
@@ -177,14 +181,31 @@ def _fingerprints(view: object) -> dict[str, str]:
 def _semantic_result(report: Mapping[str, object]) -> dict[str, object]:
     provenance = cast(Mapping[str, Any], report["provenance"])
     result = cast(Mapping[str, object], provenance["result"])
+    bridge = cast(Mapping[str, object], provenance["bridge"])
+    reasoner = cast(Mapping[str, object], provenance["reasoner"])
     return {
         "global_coherence": report["global_coherence"],
         "inconsistent": report["inconsistent"],
+        "lower_bound": report["lower_bound"],
         "reasoner_used": report["reasoner_used"],
         "union_class_count": report["union_class_count"],
         "unsatisfiable_count": report["unsatisfiable_count"],
         "denominator_sha256": result["denominator_sha256"],
         "numerator_sha256": result["numerator_sha256"],
+        "bridge": dict(bridge),
+        "reasoner": {
+            name: reasoner[name]
+            for name in (
+                "actual",
+                "fallback_reason",
+                "inconsistent",
+                "lower_bound",
+                "prior_attempts",
+                "profile",
+                "requested",
+            )
+        },
+        "result": dict(result),
     }
 
 
@@ -228,24 +249,46 @@ def _require_encoded_handoff(
         name: value
         for name, value in counters.items()
         if name in _FORBIDDEN_ZERO_COUNTERS
-        and value is not False
-        and not (
-            isinstance(value, int)
-            and not isinstance(value, bool)
-            and value == 0
-        )
+        and (type(value) is not int or value != 0)
     }
     if nonzero:
         raise RuntimeError(f"{label} crossed forbidden work counters: {nonzero!r}")
     buffer_count = counters.get("encoded_buffer_count")
     zero_copy_count = counters.get("encoded_zero_copy_buffers")
     if (
-        isinstance(buffer_count, bool)
-        or not isinstance(buffer_count, int)
+        type(buffer_count) is not int
         or buffer_count < 1
+        or type(zero_copy_count) is not int
         or zero_copy_count != buffer_count
     ):
         raise RuntimeError(f"{label} did not retain every encoded buffer zero-copy")
+
+
+def _require_worker_transport(
+    transport: Mapping[str, object],
+    *,
+    case_name: str,
+) -> None:
+    label = f"regression:{case_name}/elk-worker"
+    if transport.get("mode") != "core-wire-worker":
+        raise RuntimeError(f"{label} did not use the bounded core-wire worker")
+    if transport.get("wire_verified") is not True:
+        raise RuntimeError(f"{label} did not verify the core wire snapshot")
+    if transport.get("mmap_verified") is not True:
+        raise RuntimeError(f"{label} did not reopen the snapshot through verified mmap")
+    owl_parse_count = transport.get("owl_parse_count")
+    if type(owl_parse_count) is not int or owl_parse_count != 0:
+        raise RuntimeError(f"{label} parsed an OWL document")
+    wire_bytes = transport.get("wire_bytes")
+    if isinstance(wire_bytes, bool) or not isinstance(wire_bytes, int) or wire_bytes < 1:
+        raise RuntimeError(f"{label} did not report a nonempty core wire snapshot")
+    wire_sha256 = transport.get("wire_sha256")
+    if (
+        not isinstance(wire_sha256, str)
+        or len(wire_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in wire_sha256)
+    ):
+        raise RuntimeError(f"{label} did not report a canonical wire digest")
 
 
 @contextmanager
@@ -559,6 +602,122 @@ def run_regression_matrix(*, require_encoded: bool = False) -> dict[str, object]
     }
 
 
+def run_worker_regression_matrix(
+    *,
+    require_encoded: bool = False,
+    timeout_s: float = 30.0,
+) -> dict[str, object]:
+    """Match in-process ELK through the verified wire/mmap worker on every oracle."""
+
+    if (
+        isinstance(timeout_s, bool)
+        or not isinstance(timeout_s, (int, float))
+        or not math.isfinite(timeout_s)
+        or timeout_s <= 0
+    ):
+        raise ValueError("timeout_s must be a positive number")
+    baseline_path = ROOT / "tests" / "baselines" / "robot-1.9.10.json"
+    baseline = cast(Mapping[str, Any], json.loads(baseline_path.read_text(encoding="utf-8")))
+    cases = cast(Mapping[str, Mapping[str, Any]], baseline["cases"])
+    observed: dict[str, dict[str, object]] = {}
+    for case_name, expected in sorted(cases.items()):
+        source = pyowl_core.coerce_snapshot(
+            FIXTURES / str(expected["source"]),
+            document_iri=f"urn:oaei:installed-worker:{case_name}:source",
+        )
+        target = pyowl_core.coerce_snapshot(
+            FIXTURES / str(expected["target"]),
+            document_iri=f"urn:oaei:installed-worker:{case_name}:target",
+        )
+        correspondences = tuple(
+            cast(Correspondence, tuple(item))
+            for item in cast(Iterable[Iterable[str]], expected["bridge"])
+        )
+        reports: dict[str, Mapping[str, object]] = {}
+        for mode_name, reasoner_timeout in (
+            ("in_process", None),
+            ("worker", float(timeout_s)),
+        ):
+            reports[mode_name] = score_reference_coherence(
+                correspondences,
+                source,
+                target,
+                reasoner="elk",
+                timeout_s=reasoner_timeout,
+            )
+
+        in_process = reports["in_process"]
+        worker = reports["worker"]
+        in_process_semantic = _semantic_result(in_process)
+        worker_semantic = _semantic_result(worker)
+        if worker_semantic != in_process_semantic:
+            raise RuntimeError(f"{case_name}/elk worker diverged from in-process semantics")
+
+        named_classes = tuple(cast(Iterable[str], expected["named_classes"]))
+        wanted = tuple(cast(Iterable[str], expected["elk_unsatisfiable"]))
+        if (
+            worker_semantic["reasoner_used"] != "elk"
+            or worker_semantic["union_class_count"] != len(named_classes)
+            or worker_semantic["unsatisfiable_count"] != len(wanted)
+            or worker_semantic["denominator_sha256"] != sorted_line_sha256(named_classes)
+            or worker_semantic["numerator_sha256"] != sorted_line_sha256(wanted)
+        ):
+            raise RuntimeError(f"{case_name}/elk worker diverged from the pinned semantic oracle")
+
+        in_process_provenance = cast(
+            Mapping[str, Any],
+            in_process["provenance"],
+        )
+        worker_provenance = cast(Mapping[str, Any], worker["provenance"])
+        in_process_handoff = cast(
+            Mapping[str, object],
+            in_process_provenance["compiler_handoff"],
+        )
+        worker_handoff = cast(
+            Mapping[str, object],
+            worker_provenance["compiler_handoff"],
+        )
+        worker_reasoner = cast(Mapping[str, Any], worker_provenance["reasoner"])
+        worker_transport = cast(
+            Mapping[str, object],
+            worker_reasoner["transport"],
+        )
+        _require_worker_transport(worker_transport, case_name=case_name)
+        if require_encoded:
+            for mode_name, handoff in (
+                ("in-process", in_process_handoff),
+                ("worker", worker_handoff),
+            ):
+                _require_encoded_handoff(
+                    handoff,
+                    format_name=f"regression:{case_name}/{mode_name}",
+                    reasoner="elk",
+                )
+        observed[case_name] = {
+            "semantic_result": worker_semantic,
+            "in_process_compiler_handoff": dict(in_process_handoff),
+            "worker_compiler_handoff": dict(worker_handoff),
+            "worker_transport": dict(worker_transport),
+        }
+
+    required = {
+        "already_incoherent",
+        "equivalence_clash",
+        "equivalence_clean",
+        "subsumption_forward_clash",
+        "subsumption_reverse_clash",
+    }
+    if set(observed) != required:
+        raise RuntimeError(f"installed worker baseline has unexpected cases: {sorted(observed)!r}")
+    return {
+        "schema": WORKER_REGRESSION_MATRIX_SCHEMA,
+        "encoded_required": require_encoded,
+        "worker_mmap_semantic_identity": True,
+        "worker_timeout_seconds": float(timeout_s),
+        "cases": observed,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
@@ -577,6 +736,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="run every pinned semantic case, including multi-level incoherence",
     )
+    mode.add_argument(
+        "--worker-regression-matrix",
+        action="store_true",
+        help="cross every pinned ELK case through in-process and verified mmap worker modes",
+    )
+    parser.add_argument(
+        "--worker-timeout",
+        type=float,
+        default=30.0,
+        help="per-case worker wall-clock gate in seconds (30)",
+    )
     parser.add_argument(
         "--require-encoded",
         action="store_true",
@@ -584,15 +754,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     if args.require_encoded and not (
-        args.matrix or args.owner_matrix or args.regression_matrix
+        args.matrix or args.owner_matrix or args.regression_matrix or args.worker_regression_matrix
     ):
         parser.error(
-            "--require-encoded requires --matrix, --owner-matrix, or --regression-matrix"
+            "--require-encoded requires --matrix, --owner-matrix, "
+            "--regression-matrix, or --worker-regression-matrix"
         )
+    result: Mapping[str, object]
     if args.owner_matrix:
         result = run_format_owner_matrix(require_encoded=args.require_encoded)
     elif args.regression_matrix:
         result = run_regression_matrix(require_encoded=args.require_encoded)
+    elif args.worker_regression_matrix:
+        result = run_worker_regression_matrix(
+            require_encoded=args.require_encoded,
+            timeout_s=args.worker_timeout,
+        )
     elif args.matrix:
         result = run_format_matrix(require_encoded=args.require_encoded)
     else:

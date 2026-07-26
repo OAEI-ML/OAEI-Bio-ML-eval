@@ -164,12 +164,82 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
                 format_name="functional",
                 reasoner="elk",
             )
+        boolean_zero = {
+            **handoff,
+            "counters": {**counters, "parser_calls": False},
+        }
+        with self.assertRaisesRegex(RuntimeError, "forbidden work counters"):
+            installed_native_smoke._require_encoded_handoff(
+                boolean_zero,
+                format_name="functional",
+                reasoner="elk",
+            )
+        boolean_zero_copy = {
+            **handoff,
+            "counters": {
+                **counters,
+                "encoded_buffer_count": 1,
+                "encoded_zero_copy_buffers": True,
+            },
+        }
+        with self.assertRaisesRegex(RuntimeError, "every encoded buffer zero-copy"):
+            installed_native_smoke._require_encoded_handoff(
+                boolean_zero_copy,
+                format_name="functional",
+                reasoner="elk",
+            )
         for reasoner in ("elk", "hermit"):
             installed_native_smoke._require_encoded_handoff(
                 handoff,
                 format_name="functional:retry",
                 reasoner=reasoner,
             )
+
+    def test_worker_transport_requires_verified_mmap_without_owl_parse(self) -> None:
+        from tools import installed_native_smoke
+
+        transport = {
+            "mode": "core-wire-worker",
+            "wire_verified": True,
+            "mmap_verified": True,
+            "owl_parse_count": 0,
+            "wire_bytes": 4096,
+            "wire_sha256": "a" * 64,
+        }
+        installed_native_smoke._require_worker_transport(
+            transport,
+            case_name="equivalence_clash",
+        )
+        invalid_values = (
+            ("mode", "in-process-identity", "bounded core-wire worker"),
+            ("wire_verified", False, "verify the core wire"),
+            ("mmap_verified", False, "verified mmap"),
+            ("owl_parse_count", 1, "parsed an OWL document"),
+            ("owl_parse_count", False, "parsed an OWL document"),
+            ("wire_bytes", 0, "nonempty core wire"),
+            ("wire_sha256", "not-a-digest", "canonical wire digest"),
+        )
+        for field, value, message in invalid_values:
+            with (
+                self.subTest(field=field),
+                self.assertRaisesRegex(RuntimeError, message),
+            ):
+                installed_native_smoke._require_worker_transport(
+                    {**transport, field: value},
+                    case_name="equivalence_clash",
+                )
+
+    def test_worker_matrix_rejects_invalid_timeout_before_loading_fixtures(self) -> None:
+        from tools import installed_native_smoke
+
+        for timeout in (True, 0.0, -1.0, float("inf"), float("nan")):
+            with (
+                self.subTest(timeout=timeout),
+                self.assertRaisesRegex(ValueError, "positive number"),
+            ):
+                installed_native_smoke.run_worker_regression_matrix(
+                    timeout_s=timeout,
+                )
 
     def test_interrupted_owner_matrix_closes_mmaps_and_retry_is_clean(self) -> None:
         import pyowl_core
@@ -256,6 +326,34 @@ class TestInstalledNativeOwnerMatrix(unittest.TestCase):
         for evidence in result["cases"].values():
             self.assertTrue(evidence["composite_owner_identity"])
             self.assertEqual(set(evidence["reasoners"]), {"elk", "hermit"})
+
+    def test_pinned_elk_regressions_match_through_verified_mmap_worker(self) -> None:
+        from tools import installed_native_smoke
+
+        result = installed_native_smoke.run_worker_regression_matrix()
+
+        self.assertEqual(
+            result["schema"],
+            installed_native_smoke.WORKER_REGRESSION_MATRIX_SCHEMA,
+        )
+        self.assertTrue(result["worker_mmap_semantic_identity"])
+        self.assertFalse(result["encoded_required"])
+        self.assertEqual(
+            set(result["cases"]),
+            {
+                "already_incoherent",
+                "equivalence_clash",
+                "equivalence_clean",
+                "subsumption_forward_clash",
+                "subsumption_reverse_clash",
+            },
+        )
+        for evidence in result["cases"].values():
+            transport = evidence["worker_transport"]
+            self.assertEqual(transport["mode"], "core-wire-worker")
+            self.assertTrue(transport["wire_verified"])
+            self.assertTrue(transport["mmap_verified"])
+            self.assertEqual(transport["owl_parse_count"], 0)
 
 
 if __name__ == "__main__":
