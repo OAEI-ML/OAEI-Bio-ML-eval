@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
-from collections.abc import Mapping
+import tempfile
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
 
@@ -22,6 +25,7 @@ A = "http://ex.org/A"
 B = "http://ex.org/B"
 
 MATRIX_SCHEMA = "oaei-bioml-eval.installed-native-owner-matrix/1"
+OWNER_MATRIX_SCHEMA = "oaei-bioml-eval.installed-native-format-owner-matrix/1"
 _ENCODED_SCHEMA = "pyowl-core/structural-columns"
 _REQUIRED_PUBLIC_COUNTERS = (
     "base_flattening_bytes",
@@ -211,6 +215,101 @@ def _require_encoded_handoff(
         raise RuntimeError(f"{label} did not retain every encoded buffer zero-copy")
 
 
+@contextmanager
+def _owner_pairs(source: object, target: object) -> Iterator[Mapping[str, tuple[Any, Any]]]:
+    source_wire = pyowl_core.encode_snapshot(cast(Any, source))
+    target_wire = pyowl_core.encode_snapshot(cast(Any, target))
+    decoded_source = pyowl_core.decode_snapshot(source_wire)
+    decoded_target = pyowl_core.decode_snapshot(target_wire)
+    overlay_source = pyowl_core.apply_delta(
+        cast(Any, source),
+        pyowl_core.OntologyDelta(),
+    )
+    overlay_target = pyowl_core.apply_delta(
+        cast(Any, target),
+        pyowl_core.OntologyDelta(),
+    )
+    with tempfile.TemporaryDirectory(prefix="oaei-installed-owner-matrix-") as temporary:
+        directory = Path(temporary)
+        source_path = directory / "source.pyocore"
+        target_path = directory / "target.pyocore"
+        source_path.write_bytes(source_wire)
+        target_path.write_bytes(target_wire)
+        mapped_source = pyowl_core.open_snapshot(source_path, mmap=True, verify=True)
+        mapped_target = pyowl_core.open_snapshot(target_path, mmap=True, verify=True)
+        try:
+            yield {
+                "decoded": (decoded_source, decoded_target),
+                "direct": (source, target),
+                "mmap": (mapped_source, mapped_target),
+                "overlay": (overlay_source, overlay_target),
+            }
+        finally:
+            gc.collect()
+            try:
+                mapped_target.close()
+            finally:
+                mapped_source.close()
+
+
+def _score_owner_pair(
+    source: Any,
+    target: Any,
+    *,
+    format_name: str,
+    owner_name: str,
+    require_encoded: bool,
+) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
+    composite = compose_alignment_views(source, target, ((A, B, "="),))
+    members = tuple(member.view for member in composite.members)
+    if members != (source, target) or members[0] is not source or members[1] is not target:
+        raise RuntimeError(
+            f"{format_name}/{owner_name} composition lost source/target owner identity"
+        )
+
+    reasoner_results: dict[str, dict[str, object]] = {}
+    for reasoner in ("hermit", "elk"):
+        report = score_reference_coherence(
+            [(A, B, "=")],
+            source,
+            target,
+            reasoner=cast(ReasonerName, reasoner),
+            timeout_s=None,
+        )
+        semantic = _semantic_result(report)
+        provenance = cast(Mapping[str, Any], report["provenance"])
+        handoff = cast(Mapping[str, object], provenance["compiler_handoff"])
+        if require_encoded:
+            _require_encoded_handoff(
+                handoff,
+                format_name=f"{format_name}/{owner_name}",
+                reasoner=reasoner,
+            )
+        reasoner_results[reasoner] = {
+            **semantic,
+            "compiler_handoff": dict(handoff),
+        }
+    composite_fingerprints = _fingerprints(composite)
+    del composite
+    return (
+        {
+            "composite_owner_identity": True,
+            "composite_fingerprints": composite_fingerprints,
+            "source_fingerprints": _fingerprints(source),
+            "target_fingerprints": _fingerprints(target),
+            "reasoners": reasoner_results,
+        },
+        {
+            reasoner: {
+                name: value
+                for name, value in result.items()
+                if name != "compiler_handoff"
+            }
+            for reasoner, result in reasoner_results.items()
+        },
+    )
+
+
 def run() -> dict[str, dict[str, object]]:
     """Run the frozen equivalence clash through both installed adapters."""
 
@@ -277,42 +376,13 @@ def run_format_matrix(*, require_encoded: bool = False) -> dict[str, object]:
         )
         source_fingerprints = _fingerprints(source)
         target_fingerprints = _fingerprints(target)
-        composite = compose_alignment_views(source, target, ((A, B, "="),))
-        members = tuple(member.view for member in composite.members)
-        if members != (source, target) or members[0] is not source or members[1] is not target:
-            raise RuntimeError(f"{format_name} composition lost source/target owner identity")
-
-        reasoner_results: dict[str, dict[str, object]] = {}
-        for reasoner in ("hermit", "elk"):
-            report = score_reference_coherence(
-                [(A, B, "=")],
-                source,
-                target,
-                reasoner=cast(ReasonerName, reasoner),
-                timeout_s=None,
-            )
-            semantic = _semantic_result(report)
-            provenance = cast(Mapping[str, Any], report["provenance"])
-            handoff = cast(Mapping[str, object], provenance["compiler_handoff"])
-            if require_encoded:
-                _require_encoded_handoff(
-                    handoff,
-                    format_name=format_name,
-                    reasoner=reasoner,
-                )
-            reasoner_results[reasoner] = {
-                **semantic,
-                "compiler_handoff": dict(handoff),
-            }
-
-        semantic_results = {
-            reasoner: {
-                name: value
-                for name, value in result.items()
-                if name != "compiler_handoff"
-            }
-            for reasoner, result in reasoner_results.items()
-        }
+        evidence, semantic_results = _score_owner_pair(
+            source,
+            target,
+            format_name=format_name,
+            owner_name="direct",
+            require_encoded=require_encoded,
+        )
         if expected_source is None:
             expected_source = source_fingerprints
             expected_target = target_fingerprints
@@ -323,13 +393,7 @@ def run_format_matrix(*, require_encoded: bool = False) -> dict[str, object]:
             or semantic_results != expected_results
         ):
             raise RuntimeError(f"{format_name} diverged from the format-equivalent baseline")
-        formats[format_name] = {
-            "composite_owner_identity": True,
-            "composite_fingerprints": _fingerprints(composite),
-            "source_fingerprints": source_fingerprints,
-            "target_fingerprints": target_fingerprints,
-            "reasoners": reasoner_results,
-        }
+        formats[format_name] = evidence
 
     return {
         "schema": MATRIX_SCHEMA,
@@ -339,12 +403,76 @@ def run_format_matrix(*, require_encoded: bool = False) -> dict[str, object]:
     }
 
 
+def run_format_owner_matrix(*, require_encoded: bool = False) -> dict[str, object]:
+    """Cross every format through direct, decoded, mmap, and overlay owner pairs."""
+
+    formats: dict[str, dict[str, object]] = {}
+    expected_source: dict[str, str] | None = None
+    expected_target: dict[str, str] | None = None
+    expected_composite: dict[str, str] | None = None
+    expected_results: dict[str, dict[str, object]] | None = None
+    for format_name, (source_bytes, target_bytes) in FORMAT_FIXTURES.items():
+        source = pyowl_core.coerce_snapshot(
+            source_bytes,
+            document_iri="urn:oaei:installed-owner-matrix:source",
+        )
+        target = pyowl_core.coerce_snapshot(
+            target_bytes,
+            document_iri="urn:oaei:installed-owner-matrix:target",
+        )
+        owners: dict[str, dict[str, object]] = {}
+        with _owner_pairs(source, target) as pairs:
+            for owner_name, (owned_source, owned_target) in pairs.items():
+                evidence, semantic_results = _score_owner_pair(
+                    owned_source,
+                    owned_target,
+                    format_name=format_name,
+                    owner_name=owner_name,
+                    require_encoded=require_encoded,
+                )
+                source_fingerprints = cast(dict[str, str], evidence["source_fingerprints"])
+                target_fingerprints = cast(dict[str, str], evidence["target_fingerprints"])
+                composite_fingerprints = cast(
+                    dict[str, str],
+                    evidence["composite_fingerprints"],
+                )
+                if expected_source is None:
+                    expected_source = source_fingerprints
+                    expected_target = target_fingerprints
+                    expected_composite = composite_fingerprints
+                    expected_results = semantic_results
+                elif (
+                    source_fingerprints != expected_source
+                    or target_fingerprints != expected_target
+                    or composite_fingerprints != expected_composite
+                    or semantic_results != expected_results
+                ):
+                    raise RuntimeError(
+                        f"{format_name}/{owner_name} diverged from the owner-equivalent baseline"
+                    )
+                owners[owner_name] = evidence
+        formats[format_name] = {"owners": owners}
+
+    return {
+        "schema": OWNER_MATRIX_SCHEMA,
+        "encoded_required": require_encoded,
+        "format_owner_semantic_identity": True,
+        "formats": formats,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--matrix",
         action="store_true",
         help="cross format-equivalent Functional, RDF/XML, Turtle, and OWL/XML owners",
+    )
+    mode.add_argument(
+        "--owner-matrix",
+        action="store_true",
+        help="also cross direct, decoded, mmap, and overlay source/target owners",
     )
     parser.add_argument(
         "--require-encoded",
@@ -352,9 +480,14 @@ def main(argv: list[str] | None = None) -> int:
         help="fail unless every matrix lane publishes complete encoded-native zero-work evidence",
     )
     args = parser.parse_args(argv)
-    if args.require_encoded and not args.matrix:
-        parser.error("--require-encoded requires --matrix")
-    result = run_format_matrix(require_encoded=args.require_encoded) if args.matrix else run()
+    if args.require_encoded and not (args.matrix or args.owner_matrix):
+        parser.error("--require-encoded requires --matrix or --owner-matrix")
+    if args.owner_matrix:
+        result = run_format_owner_matrix(require_encoded=args.require_encoded)
+    elif args.matrix:
+        result = run_format_matrix(require_encoded=args.require_encoded)
+    else:
+        result = run()
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 

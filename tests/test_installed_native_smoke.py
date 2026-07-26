@@ -2,19 +2,36 @@
 
 from __future__ import annotations
 
+import importlib.metadata
 import importlib.util
 import unittest
 
 _HAS_CORE = importlib.util.find_spec("pyowl_core") is not None
+
+
+def _installed(module: str, distribution: str) -> bool:
+    if importlib.util.find_spec(module) is None:
+        return False
+    try:
+        importlib.metadata.version(distribution)
+    except importlib.metadata.PackageNotFoundError:
+        return False
+    return True
+
+
 _HAS_STACK = all(
-    importlib.util.find_spec(module) is not None
-    for module in ("pyowl_core", "pyelk", "pyhermit")
+    _installed(module, distribution)
+    for module, distribution in (
+        ("pyowl_core", "pyowl-core"),
+        ("pyelk", "pyelk-reasoner"),
+        ("pyhermit", "pyHermiT"),
+    )
 )
 
 
 @unittest.skipUnless(_HAS_CORE, "pyowl-core is unavailable")
 class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
-    def test_format_fixtures_have_identical_public_fingerprints_and_owner_chain(self) -> None:
+    def test_format_and_owner_fixtures_have_identical_public_contracts(self) -> None:
         import pyowl_core
 
         from oaei_bioml_eval.coherence.bridge import compose_alignment_views
@@ -35,27 +52,44 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
                     target_bytes,
                     document_iri="urn:oaei:test-owner-matrix:target",
                 )
-                composite = compose_alignment_views(
-                    source,
-                    target,
-                    ((installed_native_smoke.A, installed_native_smoke.B, "="),),
-                )
-                self.assertIs(composite.members[0].view, source)
-                self.assertIs(composite.members[1].view, target)
-                observed.add(
-                    (
-                        tuple(
-                            sorted(
-                                installed_native_smoke._fingerprints(source).items()
-                            )
-                        ),
-                        tuple(
-                            sorted(
-                                installed_native_smoke._fingerprints(target).items()
-                            )
-                        ),
+                with installed_native_smoke._owner_pairs(source, target) as pairs:
+                    self.assertEqual(
+                        set(pairs),
+                        {"decoded", "direct", "mmap", "overlay"},
                     )
-                )
+                    for owner_name, (owned_source, owned_target) in pairs.items():
+                        with self.subTest(format=format_name, owner=owner_name):
+                            composite = compose_alignment_views(
+                                owned_source,
+                                owned_target,
+                                (
+                                    (
+                                        installed_native_smoke.A,
+                                        installed_native_smoke.B,
+                                        "=",
+                                    ),
+                                ),
+                            )
+                            self.assertIs(composite.members[0].view, owned_source)
+                            self.assertIs(composite.members[1].view, owned_target)
+                            observed.add(
+                                (
+                                    tuple(
+                                        sorted(
+                                            installed_native_smoke._fingerprints(
+                                                owned_source
+                                            ).items()
+                                        )
+                                    ),
+                                    tuple(
+                                        sorted(
+                                            installed_native_smoke._fingerprints(
+                                                owned_target
+                                            ).items()
+                                        )
+                                    ),
+                                )
+                            )
         self.assertEqual(len(observed), 1)
 
     def test_strict_matrix_rejects_scalar_incomplete_or_nonzero_handoffs(self) -> None:
@@ -116,21 +150,26 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
 
 @unittest.skipUnless(_HAS_STACK, "installed core, pyELK, and pyHermiT are unavailable")
 class TestInstalledNativeOwnerMatrix(unittest.TestCase):
-    def test_four_syntaxes_match_through_both_public_reasoners(self) -> None:
+    def test_format_owner_matrix_matches_through_both_public_reasoners(self) -> None:
         from tools import installed_native_smoke
 
-        result = installed_native_smoke.run_format_matrix()
+        result = installed_native_smoke.run_format_owner_matrix()
 
-        self.assertEqual(result["schema"], installed_native_smoke.MATRIX_SCHEMA)
-        self.assertTrue(result["format_semantic_identity"])
+        self.assertEqual(result["schema"], installed_native_smoke.OWNER_MATRIX_SCHEMA)
+        self.assertTrue(result["format_owner_semantic_identity"])
         self.assertFalse(result["encoded_required"])
         self.assertEqual(
             set(result["formats"]),
             {"functional", "owlxml", "rdfxml", "turtle"},
         )
         for evidence in result["formats"].values():
-            self.assertTrue(evidence["composite_owner_identity"])
-            self.assertEqual(set(evidence["reasoners"]), {"elk", "hermit"})
+            self.assertEqual(
+                set(evidence["owners"]),
+                {"decoded", "direct", "mmap", "overlay"},
+            )
+            for owner in evidence["owners"].values():
+                self.assertTrue(owner["composite_owner_identity"])
+                self.assertEqual(set(owner["reasoners"]), {"elk", "hermit"})
 
 
 if __name__ == "__main__":
