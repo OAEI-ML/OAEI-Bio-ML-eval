@@ -478,6 +478,17 @@ def _reasoner_version(module: ModuleType, distribution: str) -> str:
         raise NativeReasonerCompatibilityError(
             f"installed {distribution} exposes no package version"
         )
+    for value in (module_value, distribution_value):
+        if value is None:
+            continue
+        match = _VERSION.fullmatch(value)
+        if (
+            match is None
+            or tuple(map(int, match.groups()[:2])) != _EXPECTED_REASONER_LINE
+        ):
+            raise NativeReasonerCompatibilityError(
+                f"incompatible {distribution} version {value!r}; expected >=0.1,<0.2"
+            )
     if (
         module_value is not None
         and distribution_value is not None
@@ -488,11 +499,6 @@ def _reasoner_version(module: ModuleType, distribution: str) -> str:
             f"{module_value!r} != {distribution_value!r}"
         )
     value = module_value if module_value is not None else cast(str, distribution_value)
-    match = _VERSION.fullmatch(value)
-    if match is None or tuple(map(int, match.groups()[:2])) != _EXPECTED_REASONER_LINE:
-        raise NativeReasonerCompatibilityError(
-            f"incompatible {distribution} version {value!r}; expected >=0.1,<0.2"
-        )
     return value
 
 
