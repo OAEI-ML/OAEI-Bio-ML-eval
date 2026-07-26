@@ -100,6 +100,18 @@ def _compiler_handoff():
     }
 
 
+class _CoreContract:
+    package_version = "0.1.0.dev0"
+    api_version = (0, 1)
+    adapter_protocol = 1
+    model_schema = 1
+    wire_format = (1, 1)
+
+    @classmethod
+    def current(cls):
+        return cls()
+
+
 class _HermiTConfig:
     last_timeout = None
 
@@ -366,13 +378,17 @@ class TestCapabilityBoundary(unittest.TestCase):
         require_compatible = mock.Mock(side_effect=lambda view, _requirement: view)
         adapters = types.SimpleNamespace(
             AdapterRequirement=Requirement,
+            CoreContract=_CoreContract,
             require_compatible_view=require_compatible,
         )
         metadata = {
             "name": "native",
             "accelerated": True,
+            "core_api_version": [0, 1],
             "core_adapter_protocol_version": 1,
             "core_model_schema_version": 1,
+            "core_package_version": "0.1.0.dev0",
+            "core_wire_format_version": [1, 1],
             "compiler_handoff": _compiler_handoff(),
             "compiler_diagnostics": {"ingestion_path": "encoded-native"},
         }
@@ -427,6 +443,7 @@ class TestCapabilityBoundary(unittest.TestCase):
 
         adapters = types.SimpleNamespace(
             AdapterRequirement=Requirement,
+            CoreContract=_CoreContract,
             require_compatible_view=mock.Mock(
                 side_effect=RuntimeError("encoded view schema is unavailable")
             ),
@@ -472,6 +489,21 @@ class TestCapabilityBoundary(unittest.TestCase):
                 "core_model_schema_version",
             ),
             (
+                {**base, "core_package_version": "0.1.1"},
+                lambda view, _requirement: view,
+                "core_package_version",
+            ),
+            (
+                {**base, "core_api_version": [0, 2]},
+                lambda view, _requirement: view,
+                "core_api_version",
+            ),
+            (
+                {**base, "core_wire_format_version": [1, 0]},
+                lambda view, _requirement: view,
+                "core_wire_format_version",
+            ),
+            (
                 {**base, "accelerated": False},
                 lambda view, _requirement: view,
                 "native availability",
@@ -490,6 +522,7 @@ class TestCapabilityBoundary(unittest.TestCase):
         for metadata, compatible, message in cases:
             adapters = types.SimpleNamespace(
                 AdapterRequirement=Requirement,
+                CoreContract=_CoreContract,
                 require_compatible_view=compatible,
             )
             with (
@@ -501,6 +534,69 @@ class TestCapabilityBoundary(unittest.TestCase):
                 self.assertRaisesRegex(NativeReasonerCompatibilityError, message),
             ):
                 _validate_encoded_session_handoff(ontology, metadata)
+
+    def test_encoded_session_rejects_known_work_and_zero_copy_contradictions(self):
+        class Requirement:
+            def __init__(self, **_values):
+                pass
+
+        ontology = types.SimpleNamespace(
+            capabilities=types.SimpleNamespace(
+                adapter_protocol=1,
+                model_schema=1,
+            )
+        )
+        adapters = types.SimpleNamespace(
+            AdapterRequirement=Requirement,
+            CoreContract=_CoreContract,
+            require_compatible_view=lambda view, _requirement: view,
+        )
+        base = {
+            "name": "native",
+            "accelerated": True,
+            "compiler_handoff": _compiler_handoff(),
+            "compiler_diagnostics": {
+                "ingestion_path": "encoded-native",
+            },
+        }
+        cases = (
+            ({"parser_calls": 1}, "forbidden work counters"),
+            ({"materialized_scalar_rows": 2}, "forbidden work counters"),
+            ({"structural_copy_bytes": 8}, "forbidden work counters"),
+            ({"wire_encoder_calls": 1}, "forbidden work counters"),
+            (
+                {
+                    "encoded_buffer_count": 11,
+                    "encoded_zero_copy_buffers": 10,
+                },
+                "every encoded buffer zero-copy",
+            ),
+        )
+        for counters, message in cases:
+            with (
+                self.subTest(counters=counters),
+                mock.patch(
+                    "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                    return_value=adapters,
+                ),
+                self.assertRaisesRegex(NativeReasonerCompatibilityError, message),
+            ):
+                _validate_encoded_session_handoff(
+                    ontology,
+                    {
+                        **base,
+                        "compiler_diagnostics": {
+                            "ingestion_path": "encoded-native",
+                            "counters": counters,
+                        },
+                    },
+                )
+
+        with mock.patch(
+            "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+            return_value=adapters,
+        ):
+            _validate_encoded_session_handoff(ontology, base)
 
     def test_scalar_session_does_not_require_encoded_negotiation(self):
         with mock.patch(
@@ -618,6 +714,27 @@ class TestCapabilityBoundary(unittest.TestCase):
             list(handoff["buffer_widths"]),
             sorted(_ENCODED_BUFFER_WIDTHS),
         )
+
+    def test_malformed_optional_backend_core_contract_fails_closed(self):
+        cases = (
+            ("core_package_version", ""),
+            ("core_model_schema_version", True),
+            ("core_adapter_protocol_version", 0),
+            ("core_api_version", (0, True)),
+            ("core_wire_format_version", [1, 1]),
+        )
+        for name, value in cases:
+            with (
+                self.subTest(name=name, value=value),
+                self.assertRaisesRegex(
+                    NativeReasonerCompatibilityError,
+                    name,
+                ),
+            ):
+                _backend_metadata(
+                    types.SimpleNamespace(backend=types.SimpleNamespace(**{name: value})),
+                    "0.1.0.dev0",
+                )
 
     def test_partial_or_non_mapping_compiler_handoff_fails_closed(self):
         invalid = _compiler_handoff()
@@ -858,6 +975,7 @@ class TestELKAdapter(unittest.TestCase):
         )
         adapters = types.SimpleNamespace(
             AdapterRequirement=Requirement,
+            CoreContract=_CoreContract,
             require_compatible_view=lambda view, _requirement: view,
         )
         modules = {
@@ -1909,6 +2027,52 @@ class TestDeferredRealDataComparison(unittest.TestCase):
 
 @unittest.skipUnless(_pyowl_core is not None, "pyowl-core not installed")
 class TestConcreteCoreProvenance(unittest.TestCase):
+    def test_advertised_core_contract_negotiates_by_identity(self):
+        assert _pyowl_core is not None
+        source = _pyowl_core.coerce_snapshot(
+            f"Ontology(Declaration(Class(<{A}>)))".encode(),
+            document_iri="urn:document:source",
+        )
+        target = _pyowl_core.coerce_snapshot(
+            f"Ontology(Declaration(Class(<{B}>)))".encode(),
+            document_iri="urn:document:target",
+        )
+        composite = compose_alignment_views(
+            source,
+            target,
+            analyze_correspondences([(A, B)]).correspondences,
+        )
+        backend = types.SimpleNamespace(
+            name="native",
+            accelerated=True,
+            core_package_version=_pyowl_core.__version__,
+            core_api_version=_pyowl_core.API_VERSION,
+            core_model_schema_version=_pyowl_core.MODEL_SCHEMA_VERSION,
+            core_wire_format_version=_pyowl_core.WIRE_FORMAT_VERSION,
+            core_adapter_protocol_version=_pyowl_core.ADAPTER_PROTOCOL_VERSION,
+            compiler_handoff=_compiler_handoff(),
+        )
+        metadata = _backend_metadata(
+            types.SimpleNamespace(
+                backend=backend,
+                diagnostics=lambda: {
+                    "ingestion_path": "encoded-native",
+                    "encoded_buffer_count": 11,
+                    "encoded_zero_copy_buffers": 11,
+                    "materialized_scalar_rows": 0,
+                },
+            ),
+            "0.1.0.dev0",
+        )
+
+        _validate_encoded_session_handoff(composite, metadata)
+
+        self.assertEqual(metadata["core_api_version"], list(_pyowl_core.API_VERSION))
+        self.assertEqual(
+            metadata["core_wire_format_version"],
+            list(_pyowl_core.WIRE_FORMAT_VERSION),
+        )
+
     def test_composite_manifest_and_fingerprints_are_public_and_stable(self):
         assert _pyowl_core is not None
         source = _pyowl_core.coerce_snapshot(

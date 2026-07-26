@@ -123,6 +123,20 @@ _ENCODED_ONLY_COUNTER_DEFAULTS: Mapping[str, int | bool] = {
     "encoded_posting_bytes": 0,
     "encoded_compiler_gil_released": False,
 }
+_ENCODED_FORBIDDEN_WORK_COUNTERS = frozenset(
+    {
+        "base_flattening_bytes",
+        "materialized_scalar_rows",
+        "parser_calls",
+        "per_row_ffi_calls",
+        "resolver_calls",
+        "scalar_axiom_materializations",
+        "scalar_term_materializations",
+        "structural_copy_bytes",
+        "wire_decoder_calls",
+        "wire_encoder_calls",
+    }
+)
 _COMPILER_SCHEMA_FIELDS = frozenset(
     {
         "compiler_cache_schema_version",
@@ -549,9 +563,6 @@ def _backend_metadata(session: Any, package_version: str) -> dict[str, JsonValue
         "ir_schema_version",
         "ir_major",
         "ir_minor",
-        "core_package_version",
-        "core_model_schema_version",
-        "core_adapter_protocol_version",
         "accelerated",
         "native_available",
         "effective_workers",
@@ -563,17 +574,10 @@ def _backend_metadata(session: Any, package_version: str) -> dict[str, JsonValue
             metadata[name] = value
         elif name == "fallback_reason" and value is None:
             metadata[name] = None
+    _capture_backend_core_contract(backend, metadata)
     features = getattr(backend, "complete_features", None)
     if features is not None:
         metadata["complete_features"] = sorted(str(item) for item in features)
-    for name in ("core_api_version", "core_wire_format_version"):
-        value = getattr(backend, name, None)
-        if (
-            isinstance(value, tuple)
-            and len(value) == 2
-            and all(isinstance(item, int) and not isinstance(item, bool) for item in value)
-        ):
-            metadata[name] = list(value)
     compiler_handoff = getattr(backend, "compiler_handoff", _MISSING)
     if compiler_handoff is not _MISSING:
         metadata["compiler_handoff"] = _validate_compiler_handoff(compiler_handoff)
@@ -581,6 +585,47 @@ def _backend_metadata(session: Any, package_version: str) -> dict[str, JsonValue
     if compiler_diagnostics is not None:
         metadata["compiler_diagnostics"] = compiler_diagnostics
     return metadata
+
+
+def _capture_backend_core_contract(
+    backend: object,
+    metadata: dict[str, JsonValue],
+) -> None:
+    """Capture only exact optional core-version fields from a reasoner backend."""
+
+    package_version = getattr(backend, "core_package_version", _MISSING)
+    if package_version is not _MISSING:
+        if not isinstance(package_version, str) or not package_version:
+            raise NativeReasonerCompatibilityError(
+                "native Reasoner core_package_version must be nonempty text"
+            )
+        metadata["core_package_version"] = package_version
+
+    for name in ("core_model_schema_version", "core_adapter_protocol_version"):
+        value = getattr(backend, name, _MISSING)
+        if value is _MISSING:
+            continue
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise NativeReasonerCompatibilityError(
+                f"native Reasoner {name} must be a positive integer"
+            )
+        metadata[name] = value
+
+    for name in ("core_api_version", "core_wire_format_version"):
+        value = getattr(backend, name, _MISSING)
+        if value is _MISSING:
+            continue
+        if (
+            not isinstance(value, tuple)
+            or len(value) != 2
+            or any(
+                isinstance(item, bool) or not isinstance(item, int) or item < 0 for item in value
+            )
+        ):
+            raise NativeReasonerCompatibilityError(
+                f"native Reasoner {name} must be a nonnegative integer pair"
+            )
+        metadata[name] = list(value)
 
 
 def _compiler_diagnostics(session: Any) -> dict[str, JsonValue] | None:
@@ -759,7 +804,10 @@ def _validate_encoded_session_handoff(
     """Negotiate both public capability envelopes before accepting encoded-native."""
 
     diagnostics = backend.get("compiler_diagnostics")
-    if not isinstance(diagnostics, Mapping) or diagnostics.get("ingestion_path") != "encoded-native":
+    if (
+        not isinstance(diagnostics, Mapping)
+        or diagnostics.get("ingestion_path") != "encoded-native"
+    ):
         return
 
     handoff = backend.get("compiler_handoff")
@@ -779,7 +827,14 @@ def _validate_encoded_session_handoff(
         ) from error
     requirement_type = getattr(adapters, "AdapterRequirement", None)
     require_compatible = getattr(adapters, "require_compatible_view", None)
-    if not isinstance(requirement_type, type) or not callable(require_compatible):
+    core_contract_type = getattr(adapters, "CoreContract", None)
+    current_contract = getattr(core_contract_type, "current", None)
+    if (
+        not isinstance(requirement_type, type)
+        or not callable(require_compatible)
+        or not isinstance(core_contract_type, type)
+        or not callable(current_contract)
+    ):
         raise NativeReasonerCompatibilityError(
             "installed pyowl-core lacks public encoded-view negotiation"
         )
@@ -806,6 +861,12 @@ def _validate_encoded_session_handoff(
         raise NativeReasonerCompatibilityError(
             "pyowl-core compatibility negotiation changed ontology identity"
         )
+    try:
+        core_contract = current_contract()
+    except Exception as error:
+        raise NativeReasonerCompatibilityError(
+            f"encoded-native core contract discovery failed: {error}"
+        ) from error
 
     capabilities = getattr(ontology, "capabilities", None)
     if capabilities is None:
@@ -813,8 +874,11 @@ def _validate_encoded_session_handoff(
             "encoded-native ontology lacks public core capabilities"
         )
     expected_core_fields = {
+        "core_package_version": getattr(core_contract, "package_version", None),
+        "core_api_version": _contract_pair(core_contract, "api_version"),
         "core_adapter_protocol_version": getattr(capabilities, "adapter_protocol", None),
         "core_model_schema_version": getattr(capabilities, "model_schema", None),
+        "core_wire_format_version": _contract_pair(core_contract, "wire_format"),
     }
     for name, expected in expected_core_fields.items():
         actual = backend.get(name)
@@ -829,6 +893,45 @@ def _validate_encoded_session_handoff(
     if backend.get("name") == "python":
         raise NativeReasonerCompatibilityError(
             "Python Reasoner backend cannot claim encoded-native ingestion"
+        )
+    _validate_encoded_counter_claims(diagnostics)
+
+
+def _contract_pair(contract: object, name: str) -> list[int]:
+    value = getattr(contract, name, None)
+    if (
+        not isinstance(value, tuple)
+        or len(value) != 2
+        or any(isinstance(item, bool) or not isinstance(item, int) or item < 0 for item in value)
+    ):
+        raise NativeReasonerCompatibilityError(
+            f"pyowl-core {name} must be a nonnegative integer pair"
+        )
+    return list(value)
+
+
+def _validate_encoded_counter_claims(diagnostics: Mapping[object, object]) -> None:
+    counters = diagnostics.get("counters")
+    if counters is None:
+        return
+    if not isinstance(counters, Mapping):
+        raise NativeReasonerCompatibilityError(
+            "encoded-native Reasoner compiler counters must be a mapping"
+        )
+    nonzero = {
+        name: counters[name]
+        for name in sorted(_ENCODED_FORBIDDEN_WORK_COUNTERS)
+        if name in counters and counters[name] != 0
+    }
+    if nonzero:
+        raise NativeReasonerCompatibilityError(
+            f"encoded-native Reasoner crossed forbidden work counters: {nonzero!r}"
+        )
+    buffer_count = counters.get("encoded_buffer_count")
+    zero_copy_count = counters.get("encoded_zero_copy_buffers")
+    if buffer_count is not None and zero_copy_count is not None and zero_copy_count != buffer_count:
+        raise NativeReasonerCompatibilityError(
+            "encoded-native Reasoner did not retain every encoded buffer zero-copy"
         )
 
 
