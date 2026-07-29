@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import importlib.util
+import os
 import unittest
 
 _HAS_CORE = importlib.util.find_spec("pyowl_core") is not None
@@ -55,7 +56,7 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
                 with installed_native_smoke._owner_pairs(source, target) as pairs:
                     self.assertEqual(
                         set(pairs),
-                        {"decoded", "direct", "mmap", "overlay"},
+                        {"composite", "decoded", "direct", "mmap", "overlay"},
                     )
                     for owner_name, (owned_source, owned_target) in pairs.items():
                         with self.subTest(format=format_name, owner=owner_name):
@@ -70,22 +71,39 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
                                     ),
                                 ),
                             )
-                            self.assertIs(composite.members[0].view, owned_source)
-                            self.assertIs(composite.members[1].view, owned_target)
+                            self.assertTrue(
+                                installed_native_smoke._retains_owner_leaves(
+                                    composite,
+                                    owned_source,
+                                    owned_target,
+                                )
+                            )
+                            source_fingerprints = installed_native_smoke._fingerprints(
+                                owned_source
+                            )
+                            target_fingerprints = installed_native_smoke._fingerprints(
+                                owned_target
+                            )
                             observed.add(
                                 (
                                     tuple(
                                         sorted(
-                                            installed_native_smoke._fingerprints(
-                                                owned_source
-                                            ).items()
+                                            (
+                                                name,
+                                                value,
+                                            )
+                                            for name, value in source_fingerprints.items()
+                                            if name != "structural"
                                         )
                                     ),
                                     tuple(
                                         sorted(
-                                            installed_native_smoke._fingerprints(
-                                                owned_target
-                                            ).items()
+                                            (
+                                                name,
+                                                value,
+                                            )
+                                            for name, value in target_fingerprints.items()
+                                            if name != "structural"
                                         )
                                     ),
                                 )
@@ -100,10 +118,13 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
         }
         counters.update(
             {
+                "encoded_buffer_bytes": 4096,
                 "encoded_buffer_count": 11,
+                "encoded_compiler_gil_released": True,
+                "encoded_detached_buffer_count": 11,
+                "encoded_referenced_view_count": 2,
+                "encoded_segment_count": 3,
                 "encoded_zero_copy_buffers": 11,
-                "materialized_scalar_rows": 0,
-                "structural_copy_bytes": 0,
             }
         )
         handoff = {
@@ -121,6 +142,24 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
             installed_native_smoke._require_encoded_handoff(
                 handoff,
                 format_name="functional",
+                reasoner=reasoner,
+            )
+
+        sidecar = {
+            **handoff,
+            "counters": {
+                **counters,
+                "encoded_detached_buffer_count": 14,
+                "encoded_indexed_buffer_count": 2,
+                "encoded_posting_bytes": 128,
+                "encoded_private_ir_bytes": 256,
+                "encoded_staging_copy_bytes": 64,
+            },
+        }
+        for reasoner in ("elk", "hermit"):
+            installed_native_smoke._require_encoded_handoff(
+                sidecar,
+                format_name="functional:sidecar",
                 reasoner=reasoner,
             )
 
@@ -168,7 +207,7 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
             **handoff,
             "counters": {**counters, "parser_calls": False},
         }
-        with self.assertRaisesRegex(RuntimeError, "forbidden work counters"):
+        with self.assertRaisesRegex(RuntimeError, "counter types"):
             installed_native_smoke._require_encoded_handoff(
                 boolean_zero,
                 format_name="functional",
@@ -182,7 +221,7 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
                 "encoded_zero_copy_buffers": True,
             },
         }
-        with self.assertRaisesRegex(RuntimeError, "every encoded buffer zero-copy"):
+        with self.assertRaisesRegex(RuntimeError, "counter types"):
             installed_native_smoke._require_encoded_handoff(
                 boolean_zero_copy,
                 format_name="functional",
@@ -296,11 +335,40 @@ class TestInstalledNativeOwnerMatrix(unittest.TestCase):
         for evidence in result["formats"].values():
             self.assertEqual(
                 set(evidence["owners"]),
-                {"decoded", "direct", "mmap", "overlay"},
+                {"composite", "decoded", "direct", "mmap", "overlay"},
             )
             for owner in evidence["owners"].values():
                 self.assertTrue(owner["composite_owner_identity"])
                 self.assertEqual(set(owner["reasoners"]), {"elk", "hermit"})
+
+    @unittest.skipIf(
+        os.environ.get("PYELK_PURE_PYTHON") == "1"
+        or os.environ.get("PYHERMIT_BACKEND") == "python",
+        "advertised encoded-native backends are explicitly disabled",
+    )
+    def test_advertised_owner_matrix_publishes_complete_zero_work_ledgers(self) -> None:
+        from tools import installed_native_smoke
+
+        result = installed_native_smoke.run_format_owner_matrix(require_encoded=True)
+
+        self.assertTrue(result["encoded_required"])
+        self.assertTrue(result["format_owner_semantic_identity"])
+        for evidence in result["formats"].values():
+            for owner in evidence["owners"].values():
+                for reasoner in owner["reasoners"].values():
+                    handoff = reasoner["compiler_handoff"]
+                    self.assertEqual(handoff["ingestion_path"], "encoded-native")
+                    counters = handoff["counters"]
+                    self.assertEqual(
+                        {
+                            name: counters[name]
+                            for name in installed_native_smoke._FORBIDDEN_ZERO_COUNTERS
+                        },
+                        {
+                            name: 0
+                            for name in installed_native_smoke._FORBIDDEN_ZERO_COUNTERS
+                        },
+                    )
 
     def test_pinned_multi_level_and_control_regressions_match(self) -> None:
         from tools import installed_native_smoke

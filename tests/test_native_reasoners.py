@@ -100,6 +100,34 @@ def _compiler_handoff():
     }
 
 
+def _encoded_counters(**overrides):
+    counters = {
+        "base_flattening_bytes": 0,
+        "encoded_buffer_bytes": 1024,
+        "encoded_buffer_count": 11,
+        "encoded_compiler_gil_released": True,
+        "encoded_detached_buffer_count": 11,
+        "encoded_indexed_buffer_count": 0,
+        "encoded_posting_bytes": 0,
+        "encoded_private_ir_bytes": 0,
+        "encoded_referenced_view_count": 2,
+        "encoded_segment_count": 3,
+        "encoded_staging_copy_bytes": 0,
+        "encoded_zero_copy_buffers": 11,
+        "materialized_scalar_rows": 0,
+        "parser_calls": 0,
+        "per_row_ffi_calls": 0,
+        "resolver_calls": 0,
+        "scalar_axiom_materializations": 0,
+        "scalar_term_materializations": 0,
+        "structural_copy_bytes": 0,
+        "wire_decoder_calls": 0,
+        "wire_encoder_calls": 0,
+    }
+    counters.update(overrides)
+    return counters
+
+
 class _CoreContract:
     package_version = "0.1.0.dev0"
     api_version = (0, 1)
@@ -390,7 +418,10 @@ class TestCapabilityBoundary(unittest.TestCase):
             "core_package_version": "0.1.0.dev0",
             "core_wire_format_version": [1, 1],
             "compiler_handoff": _compiler_handoff(),
-            "compiler_diagnostics": {"ingestion_path": "encoded-native"},
+            "compiler_diagnostics": {
+                "ingestion_path": "encoded-native",
+                "counters": _encoded_counters(),
+            },
         }
 
         with mock.patch(
@@ -477,10 +508,16 @@ class TestCapabilityBoundary(unittest.TestCase):
         base = {
             "name": "native",
             "accelerated": True,
+            "core_api_version": [0, 1],
             "core_adapter_protocol_version": 1,
             "core_model_schema_version": 1,
+            "core_package_version": "0.1.0.dev0",
+            "core_wire_format_version": [1, 1],
             "compiler_handoff": _compiler_handoff(),
-            "compiler_diagnostics": {"ingestion_path": "encoded-native"},
+            "compiler_diagnostics": {
+                "ingestion_path": "encoded-native",
+                "counters": _encoded_counters(),
+            },
         }
         cases = (
             (
@@ -535,6 +572,25 @@ class TestCapabilityBoundary(unittest.TestCase):
             ):
                 _validate_encoded_session_handoff(ontology, metadata)
 
+        partial = dict(base)
+        del partial["core_wire_format_version"]
+        adapters = types.SimpleNamespace(
+            AdapterRequirement=Requirement,
+            CoreContract=_CoreContract,
+            require_compatible_view=lambda view, _requirement: view,
+        )
+        with (
+            mock.patch(
+                "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                return_value=adapters,
+            ),
+            self.assertRaisesRegex(
+                NativeReasonerCompatibilityError,
+                "incomplete public core contract",
+            ),
+        ):
+            _validate_encoded_session_handoff(ontology, partial)
+
     def test_encoded_session_rejects_known_work_and_zero_copy_contradictions(self):
         class Requirement:
             def __init__(self, **_values):
@@ -557,6 +613,7 @@ class TestCapabilityBoundary(unittest.TestCase):
             "compiler_handoff": _compiler_handoff(),
             "compiler_diagnostics": {
                 "ingestion_path": "encoded-native",
+                "counters": _encoded_counters(),
             },
         }
         cases = (
@@ -587,7 +644,7 @@ class TestCapabilityBoundary(unittest.TestCase):
                         **base,
                         "compiler_diagnostics": {
                             "ingestion_path": "encoded-native",
-                            "counters": counters,
+                            "counters": _encoded_counters(**counters),
                         },
                     },
                 )
@@ -597,6 +654,93 @@ class TestCapabilityBoundary(unittest.TestCase):
             return_value=adapters,
         ):
             _validate_encoded_session_handoff(ontology, base)
+
+        incomplete_diagnostics = (
+            {"ingestion_path": "encoded-native"},
+            {
+                "ingestion_path": "encoded-native",
+                "counters": {"encoded_buffer_count": 11},
+            },
+        )
+        for diagnostics in incomplete_diagnostics:
+            with (
+                self.subTest(diagnostics=diagnostics),
+                mock.patch(
+                    "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                    return_value=adapters,
+                ),
+                self.assertRaisesRegex(
+                    NativeReasonerCompatibilityError,
+                    "mapping|incomplete",
+                ),
+            ):
+                _validate_encoded_session_handoff(
+                    ontology,
+                    {**base, "compiler_diagnostics": diagnostics},
+                )
+
+        for counters, message in (
+            (_encoded_counters(encoded_buffer_bytes=0), "no retained structural buffers"),
+            (
+                _encoded_counters(encoded_referenced_view_count=4),
+                "referenced more views",
+            ),
+        ):
+            with (
+                self.subTest(message=message),
+                mock.patch(
+                    "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+                    return_value=adapters,
+                ),
+                self.assertRaisesRegex(NativeReasonerCompatibilityError, message),
+            ):
+                _validate_encoded_session_handoff(
+                    ontology,
+                    {
+                        **base,
+                        "compiler_diagnostics": {
+                            "ingestion_path": "encoded-native",
+                            "counters": counters,
+                        },
+                    },
+                )
+
+    def test_encoded_session_accepts_bounded_sidecar_counters(self):
+        class Requirement:
+            def __init__(self, **_values):
+                pass
+
+        ontology = types.SimpleNamespace(
+            capabilities=types.SimpleNamespace(
+                adapter_protocol=1,
+                model_schema=1,
+            )
+        )
+        adapters = types.SimpleNamespace(
+            AdapterRequirement=Requirement,
+            CoreContract=_CoreContract,
+            require_compatible_view=lambda view, _requirement: view,
+        )
+        metadata = {
+            "name": "native",
+            "accelerated": True,
+            "compiler_handoff": _compiler_handoff(),
+            "compiler_diagnostics": {
+                "ingestion_path": "encoded-native",
+                "counters": _encoded_counters(
+                    encoded_detached_buffer_count=14,
+                    encoded_indexed_buffer_count=2,
+                    encoded_posting_bytes=128,
+                    encoded_private_ir_bytes=256,
+                    encoded_staging_copy_bytes=64,
+                ),
+            },
+        }
+        with mock.patch(
+            "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
+            return_value=adapters,
+        ):
+            _validate_encoded_session_handoff(ontology, metadata)
 
     def test_scalar_session_does_not_require_encoded_negotiation(self):
         with mock.patch(
@@ -964,8 +1108,7 @@ class TestELKAdapter(unittest.TestCase):
             "compiler_cache_schema_version": 2,
             "ir_schema_version": 3,
             "native_abi_version": "pyelk-native/1",
-            "encoded_buffer_count": 11,
-            "encoded_staging_copy_bytes": 0,
+            **_encoded_counters(),
         }
         ontology = types.SimpleNamespace(
             capabilities=types.SimpleNamespace(
@@ -1014,10 +1157,7 @@ class TestELKAdapter(unittest.TestCase):
                 "compiler_cache_schema_version": 2,
                 "ir_schema_version": 3,
                 "native_abi_version": "pyelk-native/1",
-                "counters": {
-                    "encoded_buffer_count": 11,
-                    "encoded_staging_copy_bytes": 0,
-                },
+                "counters": dict(sorted(_encoded_counters().items())),
             },
         )
 
@@ -2057,9 +2197,7 @@ class TestConcreteCoreProvenance(unittest.TestCase):
                 backend=backend,
                 diagnostics=lambda: {
                     "ingestion_path": "encoded-native",
-                    "encoded_buffer_count": 11,
-                    "encoded_zero_copy_buffers": 11,
-                    "materialized_scalar_rows": 0,
+                    **_encoded_counters(),
                 },
             ),
             "0.1.0.dev0",

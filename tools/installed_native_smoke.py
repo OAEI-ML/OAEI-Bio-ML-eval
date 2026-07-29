@@ -7,6 +7,7 @@ import argparse
 import gc
 import json
 import math
+import sys
 import tempfile
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
@@ -61,24 +62,39 @@ _EXPECTED_REASONER_SCHEMA = {
 }
 _REQUIRED_PUBLIC_COUNTERS = (
     "base_flattening_bytes",
+    "encoded_buffer_bytes",
+    "encoded_buffer_count",
+    "encoded_compiler_gil_released",
+    "encoded_detached_buffer_count",
+    "encoded_indexed_buffer_count",
+    "encoded_posting_bytes",
+    "encoded_private_ir_bytes",
+    "encoded_referenced_view_count",
+    "encoded_segment_count",
+    "encoded_staging_copy_bytes",
+    "encoded_zero_copy_buffers",
+    "materialized_scalar_rows",
     "parser_calls",
     "per_row_ffi_calls",
     "resolver_calls",
+    "scalar_axiom_materializations",
+    "scalar_term_materializations",
+    "structural_copy_bytes",
     "wire_decoder_calls",
     "wire_encoder_calls",
 )
-_MATERIALIZATION_COUNTERS = (
-    "materialized_scalar_rows",
-    "scalar_axiom_materializations",
-)
-_COPY_COUNTERS = ("encoded_staging_copy_bytes", "structural_copy_bytes")
 _FORBIDDEN_ZERO_COUNTERS = frozenset(
     {
-        *_REQUIRED_PUBLIC_COUNTERS,
-        *_MATERIALIZATION_COUNTERS,
-        "encoded_private_ir_bytes",
+        "base_flattening_bytes",
+        "materialized_scalar_rows",
+        "parser_calls",
+        "per_row_ffi_calls",
+        "resolver_calls",
+        "scalar_axiom_materializations",
         "scalar_term_materializations",
         "structural_copy_bytes",
+        "wire_decoder_calls",
+        "wire_encoder_calls",
     }
 )
 
@@ -232,36 +248,50 @@ def _require_encoded_handoff(
     if not isinstance(counters, Mapping):
         raise RuntimeError(f"{label} did not publish compiler counters")
     missing = tuple(name for name in _REQUIRED_PUBLIC_COUNTERS if name not in counters)
-    missing_groups = tuple(
-        group
-        for group, alternatives in (
-            ("scalar_materialization", _MATERIALIZATION_COUNTERS),
-            ("structural_copy", _COPY_COUNTERS),
-        )
-        if not any(name in counters for name in alternatives)
-    )
-    if missing or missing_groups:
+    if missing:
         raise RuntimeError(
-            f"{label} compiler counters are incomplete: "
-            f"fields={missing!r}, groups={missing_groups!r}"
+            f"{label} compiler counters are incomplete: fields={missing!r}"
         )
+    invalid_types = {
+        name: counters[name]
+        for name in _REQUIRED_PUBLIC_COUNTERS
+        if (
+            not isinstance(counters[name], bool)
+            if name == "encoded_compiler_gil_released"
+            else (
+                isinstance(counters[name], bool)
+                or not isinstance(counters[name], int)
+                or counters[name] < 0
+            )
+        )
+    }
+    if invalid_types:
+        raise RuntimeError(f"{label} compiler counter types are invalid: {invalid_types!r}")
     nonzero = {
         name: value
         for name, value in counters.items()
-        if name in _FORBIDDEN_ZERO_COUNTERS
-        and (type(value) is not int or value != 0)
+        if name in _FORBIDDEN_ZERO_COUNTERS and value != 0
     }
     if nonzero:
         raise RuntimeError(f"{label} crossed forbidden work counters: {nonzero!r}")
     buffer_count = counters.get("encoded_buffer_count")
+    buffer_bytes = counters.get("encoded_buffer_bytes")
+    segment_count = counters.get("encoded_segment_count")
     zero_copy_count = counters.get("encoded_zero_copy_buffers")
     if (
         type(buffer_count) is not int
         or buffer_count < 1
+        or type(buffer_bytes) is not int
+        or buffer_bytes < 1
+        or type(segment_count) is not int
+        or segment_count < 1
         or type(zero_copy_count) is not int
         or zero_copy_count != buffer_count
     ):
         raise RuntimeError(f"{label} did not retain every encoded buffer zero-copy")
+    referenced_count = counters.get("encoded_referenced_view_count")
+    if type(referenced_count) is not int or referenced_count > segment_count:
+        raise RuntimeError(f"{label} referenced more views than encoded segments")
 
 
 def _require_worker_transport(
@@ -305,6 +335,16 @@ def _owner_pairs(source: object, target: object) -> Iterator[Mapping[str, tuple[
         cast(Any, target),
         pyowl_core.OntologyDelta(),
     )
+    composite_source = pyowl_core.compose_views(
+        cast(Any, source),
+        decoded_source,
+        roles=("primary", "equivalent"),
+    )
+    composite_target = pyowl_core.compose_views(
+        cast(Any, target),
+        decoded_target,
+        roles=("primary", "equivalent"),
+    )
     with tempfile.TemporaryDirectory(prefix="oaei-installed-owner-matrix-") as temporary:
         directory = Path(temporary)
         source_path = directory / "source.pyocore"
@@ -319,13 +359,23 @@ def _owner_pairs(source: object, target: object) -> Iterator[Mapping[str, tuple[
                 "direct": (source, target),
                 "mmap": (mapped_source, mapped_target),
                 "overlay": (overlay_source, overlay_target),
+                "composite": (composite_source, composite_target),
             }
         finally:
             gc.collect()
+            active_error = sys.exc_info()[0] is not None
             try:
-                mapped_target.close()
+                try:
+                    mapped_target.close()
+                except pyowl_core.SnapshotInUseError:
+                    if not active_error:
+                        raise
             finally:
-                mapped_source.close()
+                try:
+                    mapped_source.close()
+                except pyowl_core.SnapshotInUseError:
+                    if not active_error:
+                        raise
 
 
 def _score_owner_pair(
@@ -339,8 +389,7 @@ def _score_owner_pair(
 ) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
     retained_correspondences = tuple(correspondences)
     composite = compose_alignment_views(source, target, retained_correspondences)
-    members = tuple(member.view for member in composite.members)
-    if members != (source, target) or members[0] is not source or members[1] is not target:
+    if not _retains_owner_leaves(composite, source, target):
         raise RuntimeError(
             f"{format_name}/{owner_name} composition lost source/target owner identity"
         )
@@ -386,6 +435,19 @@ def _score_owner_pair(
             for reasoner, result in reasoner_results.items()
         },
     )
+
+
+def _owner_leaves(owner: Any) -> tuple[Any, ...]:
+    members = getattr(owner, "members", None)
+    if members is None:
+        return (owner,)
+    return tuple(member.view for member in members)
+
+
+def _retains_owner_leaves(composite: Any, source: Any, target: Any) -> bool:
+    expected = (*_owner_leaves(source), *_owner_leaves(target))
+    actual = tuple(member.view for member in composite.members)
+    return sorted(map(id, actual)) == sorted(map(id, expected))
 
 
 def run() -> dict[str, dict[str, object]]:
@@ -482,7 +544,7 @@ def run_format_matrix(*, require_encoded: bool = False) -> dict[str, object]:
 
 
 def run_format_owner_matrix(*, require_encoded: bool = False) -> dict[str, object]:
-    """Cross every format through direct, decoded, mmap, and overlay owner pairs."""
+    """Cross every format through direct, decoded, mmap, overlay, and composite owners."""
 
     formats: dict[str, dict[str, object]] = {}
     expected_source: dict[str, str] | None = None
@@ -514,15 +576,45 @@ def run_format_owner_matrix(*, require_encoded: bool = False) -> dict[str, objec
                     dict[str, str],
                     evidence["composite_fingerprints"],
                 )
+                comparable_source = {
+                    name: value
+                    for name, value in source_fingerprints.items()
+                    if owner_name != "composite" or name != "structural"
+                }
+                comparable_target = {
+                    name: value
+                    for name, value in target_fingerprints.items()
+                    if owner_name != "composite" or name != "structural"
+                }
+                comparable_composite = {
+                    name: value
+                    for name, value in composite_fingerprints.items()
+                    if owner_name != "composite" or name != "structural"
+                }
                 if expected_source is None:
                     expected_source = source_fingerprints
                     expected_target = target_fingerprints
                     expected_composite = composite_fingerprints
                     expected_results = semantic_results
                 elif (
-                    source_fingerprints != expected_source
-                    or target_fingerprints != expected_target
-                    or composite_fingerprints != expected_composite
+                    comparable_source
+                    != {
+                        name: value
+                        for name, value in expected_source.items()
+                        if name in comparable_source
+                    }
+                    or comparable_target
+                    != {
+                        name: value
+                        for name, value in cast(dict[str, str], expected_target).items()
+                        if name in comparable_target
+                    }
+                    or comparable_composite
+                    != {
+                        name: value
+                        for name, value in cast(dict[str, str], expected_composite).items()
+                        if name in comparable_composite
+                    }
                     or semantic_results != expected_results
                 ):
                     raise RuntimeError(
@@ -729,7 +821,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument(
         "--owner-matrix",
         action="store_true",
-        help="also cross direct, decoded, mmap, and overlay source/target owners",
+        help="also cross direct, decoded, mmap, overlay, and composite source/target owners",
     )
     mode.add_argument(
         "--regression-matrix",

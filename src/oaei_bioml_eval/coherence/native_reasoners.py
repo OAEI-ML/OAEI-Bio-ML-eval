@@ -137,6 +137,33 @@ _ENCODED_FORBIDDEN_WORK_COUNTERS = frozenset(
         "wire_encoder_calls",
     }
 )
+_ENCODED_REQUIRED_COUNTERS = _ENCODED_FORBIDDEN_WORK_COUNTERS | frozenset(
+    {
+        "encoded_buffer_bytes",
+        "encoded_buffer_count",
+        "encoded_compiler_gil_released",
+        "encoded_detached_buffer_count",
+        "encoded_indexed_buffer_count",
+        "encoded_posting_bytes",
+        "encoded_private_ir_bytes",
+        "encoded_referenced_view_count",
+        "encoded_segment_count",
+        "encoded_staging_copy_bytes",
+        "encoded_zero_copy_buffers",
+    }
+)
+# Posting/remap sidecars and consumer-private IR remain bounded, visible evidence.
+# They are not copied structural columns and therefore are not required to be zero.
+_ENCODED_REQUIRED_ZERO_COUNTERS = _ENCODED_FORBIDDEN_WORK_COUNTERS
+_BACKEND_CORE_CONTRACT_FIELDS = frozenset(
+    {
+        "core_adapter_protocol_version",
+        "core_api_version",
+        "core_model_schema_version",
+        "core_package_version",
+        "core_wire_format_version",
+    }
+)
 _COMPILER_SCHEMA_FIELDS = frozenset(
     {
         "compiler_cache_schema_version",
@@ -880,9 +907,18 @@ def _validate_encoded_session_handoff(
         "core_model_schema_version": getattr(capabilities, "model_schema", None),
         "core_wire_format_version": _contract_pair(core_contract, "wire_format"),
     }
-    for name, expected in expected_core_fields.items():
-        actual = backend.get(name)
-        if actual is not None and actual != expected:
+    # pyHermiT advertises this complete envelope; pyELK currently advertises none
+    # of it and relies on the negotiated core view plus compiler_handoff.  A
+    # partial envelope from either facade is a contradiction, never a fallback.
+    advertised_core_fields = _BACKEND_CORE_CONTRACT_FIELDS & backend.keys()
+    if advertised_core_fields and advertised_core_fields != _BACKEND_CORE_CONTRACT_FIELDS:
+        missing = sorted(_BACKEND_CORE_CONTRACT_FIELDS - advertised_core_fields)
+        raise NativeReasonerCompatibilityError(
+            "encoded-native Reasoner published an incomplete public core contract: "
+            + ", ".join(missing)
+        )
+    for name in sorted(advertised_core_fields):
+        if backend[name] != expected_core_fields[name]:
             raise NativeReasonerCompatibilityError(
                 f"encoded-native Reasoner {name} does not match the supplied core view"
             )
@@ -912,26 +948,53 @@ def _contract_pair(contract: object, name: str) -> list[int]:
 
 def _validate_encoded_counter_claims(diagnostics: Mapping[object, object]) -> None:
     counters = diagnostics.get("counters")
-    if counters is None:
-        return
     if not isinstance(counters, Mapping):
         raise NativeReasonerCompatibilityError(
             "encoded-native Reasoner compiler counters must be a mapping"
         )
+    missing = sorted(_ENCODED_REQUIRED_COUNTERS - counters.keys())
+    if missing:
+        raise NativeReasonerCompatibilityError(
+            "encoded-native Reasoner compiler counters are incomplete: "
+            + ", ".join(missing)
+        )
+    for name in sorted(_ENCODED_REQUIRED_COUNTERS):
+        value = counters[name]
+        if name == "encoded_compiler_gil_released":
+            if not isinstance(value, bool):
+                raise NativeReasonerCompatibilityError(
+                    "encoded-native Reasoner encoded_compiler_gil_released "
+                    "counter must be bool"
+                )
+        elif isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise NativeReasonerCompatibilityError(
+                f"encoded-native Reasoner {name} counter must be a nonnegative integer"
+            )
     nonzero = {
         name: counters[name]
-        for name in sorted(_ENCODED_FORBIDDEN_WORK_COUNTERS)
-        if name in counters and counters[name] != 0
+        for name in sorted(_ENCODED_REQUIRED_ZERO_COUNTERS)
+        if counters[name] != 0
     }
     if nonzero:
         raise NativeReasonerCompatibilityError(
             f"encoded-native Reasoner crossed forbidden work counters: {nonzero!r}"
         )
-    buffer_count = counters.get("encoded_buffer_count")
-    zero_copy_count = counters.get("encoded_zero_copy_buffers")
-    if buffer_count is not None and zero_copy_count is not None and zero_copy_count != buffer_count:
+    buffer_count = cast(int, counters["encoded_buffer_count"])
+    buffer_bytes = cast(int, counters["encoded_buffer_bytes"])
+    segment_count = cast(int, counters["encoded_segment_count"])
+    zero_copy_count = cast(int, counters["encoded_zero_copy_buffers"])
+    if buffer_count < 1 or buffer_bytes < 1 or segment_count < 1:
+        raise NativeReasonerCompatibilityError(
+            "encoded-native Reasoner reported no retained structural buffers"
+        )
+    if zero_copy_count != buffer_count:
         raise NativeReasonerCompatibilityError(
             "encoded-native Reasoner did not retain every encoded buffer zero-copy"
+        )
+    referenced_count = cast(int, counters["encoded_referenced_view_count"])
+    if referenced_count > segment_count:
+        raise NativeReasonerCompatibilityError(
+            "encoded-native Reasoner referenced more views than encoded segments"
         )
 
 

@@ -14,6 +14,15 @@ FORBIDDEN_CORE_PREFIXES = (
     "pyowl_core.backends",
     "pyowl_core.document.native_storage",
 )
+FORBIDDEN_ENCODED_BUFFER_SYMBOLS = frozenset(
+    {
+        "EncodedStructuralPublicationV1",
+        "EncodedStructuralView",
+        "decode_canonical",
+        "decode_varint",
+        "get_encoded_structural_view",
+    }
+)
 
 
 def _import_names(node: ast.AST) -> tuple[str, ...]:
@@ -58,6 +67,31 @@ class TestJavaFreeRuntime(unittest.TestCase):
                         for prefix in FORBIDDEN_CORE_PREFIXES
                     ):
                         violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: {imported}")
+        self.assertEqual(violations, [])
+
+    def test_installable_modules_never_request_or_decode_encoded_buffers(self) -> None:
+        violations: list[str] = []
+        for path in sorted(SOURCE.rglob("*.py")):
+            relative = path.relative_to(SOURCE)
+            if any(not part.isidentifier() for part in (*relative.parts[:-1], path.stem)):
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                symbol: str | None = None
+                if isinstance(node, ast.Name):
+                    symbol = node.id
+                elif isinstance(node, ast.Attribute):
+                    symbol = node.attr
+                if symbol in FORBIDDEN_ENCODED_BUFFER_SYMBOLS:
+                    violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: {symbol}")
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "view"
+                ):
+                    violations.append(
+                        f"{path.relative_to(ROOT)}:{node.lineno}: encoded view request"
+                    )
         self.assertEqual(violations, [])
 
     def test_non_module_conflict_copies_are_excluded_from_artifacts(self) -> None:

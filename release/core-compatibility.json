@@ -1,0 +1,92 @@
+{
+  "schema": "oaei-bioml-eval.core-compatibility/1",
+  "dependency_constraints": {
+    "pyHermiT": "pyHermiT>=0.1,<0.2",
+    "pyelk-reasoner": "pyelk-reasoner>=0.1,<0.2",
+    "pyowl-core": "pyowl-core>=0.1,<0.2"
+  },
+  "tested_core": {
+    "repository": "https://github.com/OAEI-ML/pyOWLCore",
+    "commit": "005c3ccad129757b3a9be125dc064b812b607ef5",
+    "tree": "d4f3f29f6594b59f3d45a4811c38fb761a7028b9",
+    "version": "0.1.0.dev0"
+  },
+  "reasoners": {
+    "pyelk": {
+      "repository": "https://github.com/OAEI-ML/pyELK",
+      "final_attestation_commit": "70302fcd6abc27d703eeb8f59027fc1392f4709b",
+      "release_contract_commit": "faf7a995bd4b44964d7e5a56007ae484df79d597",
+      "runtime_contract_commit": "bc75f4be609626f231cdc91af800f52bae46c766",
+      "parity_contract": "wp14-encoded-public-dispatch-short"
+    },
+    "pyhermit": {
+      "repository": "https://github.com/OAEI-ML/pyHermiT",
+      "final_attestation_commit": "af8f7fc669b28dfc15728c84c78f9094787d288b",
+      "attestation_source_commit": "3dd752b1ccff643dc874bbb47cf9d2eb08b6ae3c",
+      "runtime_contract_commit": "f0d4ebb270f3521b848cd2a858761afd66e72ae2",
+      "parity_contract": "wp18-encoded-public-dispatch-short"
+    }
+  },
+  "encoded_ingestion": {
+    "schema_name": "pyowl-core/structural-columns",
+    "schema_version": 1,
+    "model_schema": 1,
+    "descriptor_sha256": "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5",
+    "capability_state": "advertised",
+    "required_ingestion_path": "encoded-native",
+    "required_core_fields": [
+      "core_adapter_protocol_version",
+      "core_api_version",
+      "core_model_schema_version",
+      "core_package_version",
+      "core_wire_format_version"
+    ],
+    "required_counters": [
+      "base_flattening_bytes",
+      "encoded_buffer_bytes",
+      "encoded_buffer_count",
+      "encoded_compiler_gil_released",
+      "encoded_detached_buffer_count",
+      "encoded_indexed_buffer_count",
+      "encoded_posting_bytes",
+      "encoded_private_ir_bytes",
+      "encoded_referenced_view_count",
+      "encoded_segment_count",
+      "encoded_staging_copy_bytes",
+      "encoded_zero_copy_buffers",
+      "materialized_scalar_rows",
+      "parser_calls",
+      "per_row_ffi_calls",
+      "resolver_calls",
+      "scalar_axiom_materializations",
+      "scalar_term_materializations",
+      "structural_copy_bytes",
+      "wire_decoder_calls",
+      "wire_encoder_calls"
+    ],
+    "required_zero_counters": [
+      "base_flattening_bytes",
+      "materialized_scalar_rows",
+      "parser_calls",
+      "per_row_ffi_calls",
+      "resolver_calls",
+      "scalar_axiom_materializations",
+      "scalar_term_materializations",
+      "structural_copy_bytes",
+      "wire_decoder_calls",
+      "wire_encoder_calls"
+    ]
+  },
+  "oaei_runtime": {
+    "handoff_baseline_commit": "fd75aedbf9f5ed4351d3f6d634a6e07721d21778",
+    "consumer_api": "coherence-provenance/1",
+    "owner_matrix": [
+      "direct",
+      "mmap",
+      "overlay",
+      "composite"
+    ],
+    "bounded_fallback_transport": "core-wire-worker",
+    "in_process_transport": "identity"
+  }
+}

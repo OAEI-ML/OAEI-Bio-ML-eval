@@ -76,6 +76,7 @@ include = [
   "/SBOM.spdx.json",
   "/docs",
   "/pyproject.toml",
+  "/release",
   "/reports",
   "/specs",
   "/src",
