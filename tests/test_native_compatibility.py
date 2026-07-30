@@ -60,8 +60,8 @@ class TestNativeCompatibilityContract(unittest.TestCase):
             reasoners["pyelk"],
             {
                 "repository": "https://github.com/OAEI-ML/pyELK",
-                "production_release_commit": ("dac7f67e9bee83b57a2571ce672368d3bd925e95"),
-                "production_release_tree": ("4c201891c44a98f07dbcf0d99005b20920be6bf5"),
+                "production_release_commit": ("1175efe7be044d7fca886f815c248c00c4d8a524"),
+                "production_release_tree": ("84d7622d81cca247bf56271c44fe9747f9f1bb06"),
                 "production_release_version": "0.1.1",
                 "historical_production_release": {
                     "commit": "487de1cf47ba72b6adb85cd809e0358b28c391dc",
