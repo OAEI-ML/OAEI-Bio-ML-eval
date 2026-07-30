@@ -954,6 +954,16 @@ _DEFAULT_ONTOLOGY = object()
 class TestHermiTAdapter(unittest.TestCase):
     def setUp(self):
         _HermiTSession.mode = "consistent"
+        versions = {
+            "pyHermiT": _pyhermit_module().__version__,
+            "pyelk-reasoner": _pyelk_module().__version__,
+        }
+        version_patch = mock.patch(
+            "oaei_bioml_eval.coherence.native_reasoners.importlib.metadata.version",
+            side_effect=versions.__getitem__,
+        )
+        version_patch.start()
+        self.addCleanup(version_patch.stop)
 
     def _classify(self, ontology=_DEFAULT_ONTOLOGY):
         with mock.patch(
@@ -1046,6 +1056,16 @@ class TestELKAdapter(unittest.TestCase):
     def setUp(self):
         _ELKSession.inconsistent = False
         _ELKSession.reasons = ()
+        versions = {
+            "pyHermiT": _pyhermit_module().__version__,
+            "pyelk-reasoner": _pyelk_module().__version__,
+        }
+        version_patch = mock.patch(
+            "oaei_bioml_eval.coherence.native_reasoners.importlib.metadata.version",
+            side_effect=versions.__getitem__,
+        )
+        version_patch.start()
+        self.addCleanup(version_patch.stop)
 
     def test_unbounded_call_retains_identity_and_public_result_shapes(self):
         ontology = object()
