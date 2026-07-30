@@ -16,9 +16,18 @@ class TestNativeCompatibilityContract(unittest.TestCase):
     def setUp(self) -> None:
         self.contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
 
-    def test_exact_final_core_and_reasoner_attestations_are_bound(self) -> None:
+    def test_exact_production_releases_and_historical_attestations_are_bound(self) -> None:
         self.assertEqual(
             self.contract["tested_core"],
+            {
+                "repository": "https://github.com/OAEI-ML/pyOWLCore",
+                "commit": "d3e7893b0609fcd7df390375267a00356f09cb22",
+                "tree": "32cc4cbf9c99f1b45785cb29f4f059ec0f86a691",
+                "version": "0.1.0",
+            },
+        )
+        self.assertEqual(
+            self.contract["historical_tested_core"],
             {
                 "repository": "https://github.com/OAEI-ML/pyOWLCore",
                 "commit": "005c3ccad129757b3a9be125dc064b812b607ef5",
@@ -31,6 +40,13 @@ class TestNativeCompatibilityContract(unittest.TestCase):
             reasoners["pyelk"],
             {
                 "repository": "https://github.com/OAEI-ML/pyELK",
+                "production_release_commit": (
+                    "487de1cf47ba72b6adb85cd809e0358b28c391dc"
+                ),
+                "production_release_tree": (
+                    "39940247e95ccc6e3ec8353a670541d6ff8b8ec3"
+                ),
+                "production_release_version": "0.1.0",
                 "final_attestation_commit": (
                     "70302fcd6abc27d703eeb8f59027fc1392f4709b"
                 ),
@@ -47,6 +63,13 @@ class TestNativeCompatibilityContract(unittest.TestCase):
             reasoners["pyhermit"],
             {
                 "repository": "https://github.com/OAEI-ML/pyHermiT",
+                "production_release_commit": (
+                    "2bbc4d6e2d01747367b9f3d497f14c9da1012bb1"
+                ),
+                "production_release_tree": (
+                    "1c5dfb414704880942298359a4424dca55fc588c"
+                ),
+                "production_release_version": "0.1.0",
                 "final_attestation_commit": (
                     "af8f7fc669b28dfc15728c84c78f9094787d288b"
                 ),
@@ -92,7 +115,7 @@ class TestNativeCompatibilityContract(unittest.TestCase):
     def test_owner_and_transport_scope_is_exact(self) -> None:
         self.assertEqual(
             self.contract["schema"],
-            "oaei-bioml-eval.core-compatibility/1",
+            "oaei-bioml-eval.core-compatibility/2",
         )
         runtime = self.contract["oaei_runtime"]
         self.assertEqual(
