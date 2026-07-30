@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import tarfile
 import zipfile
 from email.parser import BytesParser
@@ -17,14 +18,32 @@ FORBIDDEN_SUFFIXES = (".class", ".dll", ".dylib", ".jar", ".pyd", ".so")
 
 
 def _project_metadata(root: Path) -> tuple[str, str, str]:
-    try:
-        import tomllib
-    except ImportError:  # pragma: no cover - Python 3.10
-        import tomli as tomllib  # type: ignore[no-redef]
+    """Read the release coordinates without adding a Python 3.10 dependency.
 
-    with (root / "pyproject.toml").open("rb") as stream:
-        project = tomllib.load(stream)["project"]
-    return str(project["name"]), str(project["version"]), str(project["requires-python"])
+    The authoritative fields are required to remain basic TOML strings.  A
+    deliberately small, fail-closed reader is sufficient here and keeps the
+    release auditor runnable in the dependency-free source-contract lane.
+    """
+
+    document = (root / "pyproject.toml").read_text(encoding="utf-8")
+    project_match = re.search(
+        r"(?ms)^\[project\][ \t]*\r?\n(?P<body>.*?)(?=^\[|\Z)",
+        document,
+    )
+    if project_match is None:
+        raise ValueError("pyproject.toml is missing a [project] table")
+    project = project_match.group("body")
+
+    values: list[str] = []
+    for field in ("name", "version", "requires-python"):
+        value_match = re.search(
+            rf'(?m)^{re.escape(field)}[ \t]*=[ \t]*"([^"\r\n]+)"[ \t]*(?:#.*)?$',
+            project,
+        )
+        if value_match is None:
+            raise ValueError(f"[project].{field} must be a literal basic string")
+        values.append(value_match.group(1))
+    return values[0], values[1], values[2]
 
 
 def _safe_names(names: list[str]) -> list[str]:

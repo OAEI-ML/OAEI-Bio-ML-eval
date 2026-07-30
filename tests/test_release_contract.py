@@ -8,9 +8,10 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import patch
 
 import oaei_bioml_eval
-from tools.audit_release import audit
+from tools.audit_release import _project_metadata, audit
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
@@ -135,6 +136,35 @@ class TestReleaseContract(unittest.TestCase):
             report = audit(Path(directory), root=ROOT)
         self.assertFalse(report["passed"])
         self.assertIn("authoritative set", cast(list[str], report["errors"])[0])
+
+    def test_release_auditor_metadata_is_dependency_free_on_python_3_10(self) -> None:
+        real_import = __import__
+
+        def import_without_toml(
+            name: str,
+            globals: dict[str, object] | None = None,
+            locals: dict[str, object] | None = None,
+            fromlist: tuple[str, ...] = (),
+            level: int = 0,
+        ) -> Any:
+            if name in {"tomli", "tomllib"}:
+                raise ImportError(f"{name} is unavailable")
+            return real_import(name, globals, locals, fromlist, level)
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("builtins.__import__", side_effect=import_without_toml),
+        ):
+            root = Path(directory)
+            (root / "pyproject.toml").write_text(
+                '[project]\nname = "example"\nversion = "1.2.3"\n'
+                'requires-python = ">=3.10"\n\n[tool.example]\nenabled = true\n',
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                _project_metadata(root),
+                ("example", "1.2.3", ">=3.10"),
+            )
 
 
 if __name__ == "__main__":
