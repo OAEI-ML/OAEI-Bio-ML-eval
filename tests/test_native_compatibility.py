@@ -21,9 +21,9 @@ class TestNativeCompatibilityContract(unittest.TestCase):
             self.contract["tested_core"],
             {
                 "repository": "https://github.com/OAEI-ML/pyOWLCore",
-                "commit": "d3e7893b0609fcd7df390375267a00356f09cb22",
-                "tree": "32cc4cbf9c99f1b45785cb29f4f059ec0f86a691",
-                "version": "0.1.0",
+                "commit": "0aab7b137b5a6eef173b8ec000aa84ff8d41e196",
+                "tree": "ca01ade1c99f804b7be550ac245a94fbf7411149",
+                "version": "0.1.1",
             },
         )
         self.assertEqual(
@@ -40,22 +40,17 @@ class TestNativeCompatibilityContract(unittest.TestCase):
             reasoners["pyelk"],
             {
                 "repository": "https://github.com/OAEI-ML/pyELK",
-                "production_release_commit": (
-                    "487de1cf47ba72b6adb85cd809e0358b28c391dc"
-                ),
-                "production_release_tree": (
-                    "39940247e95ccc6e3ec8353a670541d6ff8b8ec3"
-                ),
-                "production_release_version": "0.1.0",
-                "final_attestation_commit": (
-                    "70302fcd6abc27d703eeb8f59027fc1392f4709b"
-                ),
-                "release_contract_commit": (
-                    "faf7a995bd4b44964d7e5a56007ae484df79d597"
-                ),
-                "runtime_contract_commit": (
-                    "bc75f4be609626f231cdc91af800f52bae46c766"
-                ),
+                "production_release_commit": ("81de44ca820defa7b18ef5736eafda1bb59ec00e"),
+                "production_release_tree": ("b91c3a8e909355e53807a3af6d218f2012adde99"),
+                "production_release_version": "0.1.1",
+                "historical_production_release": {
+                    "commit": "487de1cf47ba72b6adb85cd809e0358b28c391dc",
+                    "tree": "39940247e95ccc6e3ec8353a670541d6ff8b8ec3",
+                    "version": "0.1.0",
+                },
+                "historical_final_attestation_commit": ("70302fcd6abc27d703eeb8f59027fc1392f4709b"),
+                "historical_release_contract_commit": ("faf7a995bd4b44964d7e5a56007ae484df79d597"),
+                "historical_runtime_contract_commit": ("bc75f4be609626f231cdc91af800f52bae46c766"),
                 "parity_contract": "wp14-encoded-public-dispatch-short",
             },
         )
@@ -63,27 +58,19 @@ class TestNativeCompatibilityContract(unittest.TestCase):
             reasoners["pyhermit"],
             {
                 "repository": "https://github.com/OAEI-ML/pyHermiT",
-                "production_release_commit": (
-                    "777725b3bf054dfc0bd0d3b98cc133c4b0469ca1"
-                ),
-                "production_release_tree": (
-                    "019fc1c2a4c7002ca8985e06c5b9942b7ba26c12"
-                ),
-                "production_release_version": "0.1.1",
+                "production_release_commit": ("820802171768a17691aa9d360a125efa2cada201"),
+                "production_release_tree": ("5c42fce03b257adaa254f8345839ec88112b76ee"),
+                "production_release_version": "0.1.2",
                 "historical_production_release": {
-                    "commit": "2bbc4d6e2d01747367b9f3d497f14c9da1012bb1",
-                    "tree": "1c5dfb414704880942298359a4424dca55fc588c",
-                    "version": "0.1.0",
+                    "commit": "777725b3bf054dfc0bd0d3b98cc133c4b0469ca1",
+                    "tree": "019fc1c2a4c7002ca8985e06c5b9942b7ba26c12",
+                    "version": "0.1.1",
                 },
-                "final_attestation_commit": (
-                    "af8f7fc669b28dfc15728c84c78f9094787d288b"
-                ),
-                "attestation_source_commit": (
+                "historical_final_attestation_commit": ("af8f7fc669b28dfc15728c84c78f9094787d288b"),
+                "historical_attestation_source_commit": (
                     "3dd752b1ccff643dc874bbb47cf9d2eb08b6ae3c"
                 ),
-                "runtime_contract_commit": (
-                    "f0d4ebb270f3521b848cd2a858761afd66e72ae2"
-                ),
+                "historical_runtime_contract_commit": ("f0d4ebb270f3521b848cd2a858761afd66e72ae2"),
                 "parity_contract": "wp18-encoded-public-dispatch-short",
             },
         )

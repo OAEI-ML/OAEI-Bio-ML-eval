@@ -1,0 +1,169 @@
+name: Atomic release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the audited wheel and sdist to PyPI (run from a version tag)
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r release/build-requirements.txt
+      - name: Run dependency-free release contracts
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m compileall -q src tools tests
+          python -m unittest discover -s tests -v
+          python tools/metric_contract.py
+      - name: Build the portable pair reproducibly
+        run: |
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> "$GITHUB_ENV"
+          python -m build --no-isolation --outdir dist-a
+          python -m build --no-isolation --outdir dist-b
+          cmp dist-a/*.whl dist-b/*.whl
+          cmp dist-a/*.tar.gz dist-b/*.tar.gz
+          python -m twine check dist-a/*
+      - name: Audit and hash the authoritative artifact set
+        run: |
+          python tools/audit_release.py dist-a --report release-audit.json
+          cd dist-a
+          sha256sum *.whl *.tar.gz > SHA256SUMS
+          sha256sum --check --strict SHA256SUMS
+      - name: Smoke-test the wheel without optional dependencies
+        run: |
+          python -m venv wheel-smoke
+          wheel-smoke/bin/python -m pip install --no-index --no-deps dist-a/*.whl
+          wheel-smoke/bin/python -c \
+            'import oaei_bioml_eval; assert oaei_bioml_eval.__version__ == "0.2.0"'
+          wheel-smoke/bin/python -m oaei_bioml_eval.equivalence.cli --help
+          wheel-smoke/bin/python -m oaei_bioml_eval.typed.cli --help
+          wheel-smoke/bin/python -m oaei_bioml_eval.coherence.cli --help
+      - name: Require tag and metadata agreement
+        env:
+          PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+
+          with open("pyproject.toml", "rb") as stream:
+              version = tomllib.load(stream)["project"]["version"]
+          ref = os.environ["RELEASE_REF"]
+          if ref.startswith("refs/tags/"):
+              assert os.environ["RELEASE_TAG"] == f"v{version}"
+          elif os.environ["PUBLISH"] == "true":
+              raise AssertionError(f"publication requires a version tag: {ref}")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-bundle
+          path: |
+            dist-a/*.whl
+            dist-a/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-evidence
+          path: |
+            dist-a/SHA256SUMS
+            release-audit.json
+            SBOM.spdx.json
+            release/core-compatibility.json
+            release/owner-release-override.md
+          if-no-files-found: error
+          retention-days: 7
+
+  native-stack:
+    name: Exact published native dependency stack
+    needs: build-and-audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-bundle
+          path: release-bundle
+      - name: Install the exact production dependency order
+        run: >-
+          python -m pip install
+          release-bundle/*.whl
+          pyowl-core==0.1.1
+          pyHermiT==0.1.2
+          pyelk-reasoner==0.1.1
+      - name: Require exact semantics and encoded-native handoff
+        run: |
+          python tools/native_fixture_compare.py --reasoner hermit --timeout none
+          python tools/native_fixture_compare.py --reasoner elk --timeout 60
+          python tools/installed_native_smoke.py --owner-matrix --require-encoded
+
+  provenance:
+    needs: [build-and-audit, native-stack]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-bundle
+          path: release-bundle
+      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: |
+            release-bundle/*.whl
+            release-bundle/*.tar.gz
+
+  publish:
+    needs: [build-and-audit, native-stack, provenance]
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.publish &&
+      startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-bundle
+          path: release-bundle
+      - uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
+        with:
+          packages-dir: release-bundle
+          skip-existing: false
+          verbose: true

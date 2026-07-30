@@ -29,11 +29,19 @@ That decision does not relabel an unexecuted test as passed.
 - Ruff, strict mypy, compileall, the metric contract, and the full unit suite are
   release gates.
 
-The native dependency order is intentional: publish `pyowl-core` 0.1.x first,
-then compatible pyHermiT and pyELK 0.1.x wheels, and only then publish
-`oaei-bioml-eval` 0.2.x. Development prereleases do not satisfy the final
+The native dependency order is intentional: publish `pyowl-core==0.1.1` first,
+then `pyHermiT==0.1.2` and `pyelk-reasoner==0.1.1`, and only then publish
+`oaei-bioml-eval==0.2.0`. Development prereleases do not satisfy the final
 `>=0.1,<0.2` constraints and must not be made resolver-compatible by weakening
 the release metadata.
+
+The tag-scoped `release.yml` workflow builds the portable wheel and source
+distribution twice with one commit timestamp, requires byte identity, validates
+metadata and archive contents with `tools/audit_release.py`, checks Twine,
+smoke-tests the dependency-free wheel, and installs the exact production native
+stack for semantic and encoded-handoff checks. It hashes and attests both
+distributions before the protected `pypi` environment can authorize the single
+OIDC trusted-publishing job. The workflow accepts no API-token input.
 
 ## Installed-wheel evidence
 
