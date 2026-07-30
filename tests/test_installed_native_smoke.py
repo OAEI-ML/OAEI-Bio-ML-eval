@@ -30,6 +30,20 @@ _HAS_STACK = all(
 )
 
 
+def _encoded_backends_available() -> bool:
+    if not _HAS_STACK:
+        return False
+    try:
+        from pyelk.backends import backend_report
+        from pyhermit.backends import backend_info
+    except (ImportError, AttributeError):
+        return False
+    return backend_report().rust.available and backend_info().native.available
+
+
+_HAS_ENCODED_STACK = _encoded_backends_available()
+
+
 @unittest.skipUnless(_HAS_CORE, "pyowl-core is unavailable")
 class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
     def test_format_and_owner_fixtures_have_identical_public_contracts(self) -> None:
@@ -345,6 +359,10 @@ class TestInstalledNativeOwnerMatrix(unittest.TestCase):
         os.environ.get("PYELK_PURE_PYTHON") == "1"
         or os.environ.get("PYHERMIT_BACKEND") == "python",
         "advertised encoded-native backends are explicitly disabled",
+    )
+    @unittest.skipUnless(
+        _HAS_ENCODED_STACK,
+        "installed portable wheels do not provide both encoded-native backends",
     )
     def test_advertised_owner_matrix_publishes_complete_zero_work_ledgers(self) -> None:
         from tools import installed_native_smoke
