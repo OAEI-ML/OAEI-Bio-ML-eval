@@ -42,10 +42,10 @@ class TestNativeCompatibilityContract(unittest.TestCase):
                 "pyowl2vec-star-projector": {
                     "repository": "https://github.com/OAEI-ML/pyOwl2Vec-Star-projector",
                     "production_release_commit": (
-                        "df4e5c54551a9a0ac2df25dfecabce08cf0222b4"
+                        "a0f800c1223dc7e66b0fab8a49417ade7b690568"
                     ),
                     "production_release_tree": (
-                        "d1e927b27abadea596dd833de771fd34d5154eed"
+                        "893ef426e452a55d5aa67856621775746755c558"
                     ),
                     "production_release_version": "0.1.1",
                     "dependency_relationship": "none",
@@ -78,8 +78,8 @@ class TestNativeCompatibilityContract(unittest.TestCase):
             reasoners["pyhermit"],
             {
                 "repository": "https://github.com/OAEI-ML/pyHermiT",
-                "production_release_commit": ("93f8d956b55d2715a228148040aad41d1fb6aa3e"),
-                "production_release_tree": ("ec5bdad43a1ecc2292aaeeccc02a13e32f7c5d9e"),
+                "production_release_commit": ("742bd71b3e9c2d38ba170561e5b4d26f240dccfd"),
+                "production_release_tree": ("56753deb518099dfae1cb72dd8564c7bb3cca58a"),
                 "production_release_version": "0.1.2",
                 "historical_production_release": {
                     "commit": "777725b3bf054dfc0bd0d3b98cc133c4b0469ca1",
