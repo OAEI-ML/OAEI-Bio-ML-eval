@@ -29,8 +29,8 @@
   "reasoners": {
     "pyelk": {
       "repository": "https://github.com/OAEI-ML/pyELK",
-      "production_release_commit": "1175efe7be044d7fca886f815c248c00c4d8a524",
-      "production_release_tree": "84d7622d81cca247bf56271c44fe9747f9f1bb06",
+      "production_release_commit": "169361c17f23a50e9bc6837617dd7881dcd28be8",
+      "production_release_tree": "bc5072e3aa206a04361f3d492e7d43f7d8542e2a",
       "production_release_version": "0.1.1",
       "historical_production_release": {
         "commit": "487de1cf47ba72b6adb85cd809e0358b28c391dc",
