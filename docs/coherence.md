@@ -96,5 +96,9 @@ materialization, structural-copy, wire, base-flattening, and per-row-FFI counter
 The built-in generated workload is a protocol exercise only. Its report always says
 `diagnostic_only: true`, `release_gate_eligible: false`, and `release_accepted: false`; a zero exit
 from `--enforce` would validate those mechanics, not replace pinned Conference/Bio-ML, GO/NCIT, or
-licensed SNOMED-scale evidence. With the current unadvertised sibling capabilities, enforcement is
-expected to fail closed on the selected path and missing counters.
+licensed SNOMED-scale evidence. The released sibling contracts advertise encoded
+ingestion. Enforcement succeeds only when the installed platform artifacts
+actually select both encoded-native
+backends and publish the complete counter contract; portable wheels select their
+scalar implementations, and enforcement deliberately fails closed for that
+non-encoded run.

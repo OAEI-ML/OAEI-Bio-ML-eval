@@ -7,6 +7,12 @@ pyOWLCore `af9bdb0b9178766b5f15806fb6a2f00b05e00e22`, pyELK
 `a909cfcea341834ab6d6598f80445a697b338f13`, and pyHermiT
 `04bd8163b532f623044d7391706ff728d1aed4b1`.
 
+This is a historical checkpoint. The final 0.1-series sibling contracts now
+advertise encoded ingestion, and the release-owner authorization in
+[`release/owner-release-override.md`](../release/owner-release-override.md)
+supersedes the publication decision below without rewriting its then-current
+evidence.
+
 ## Outcome
 
 The repository-owned 0.2.x handoff layer is implemented as a fail-closed checkpoint. OAEI builds

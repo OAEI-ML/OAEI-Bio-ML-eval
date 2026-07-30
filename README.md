@@ -2,7 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/oaei-bioml-eval)](https://pypi.org/project/oaei-bioml-eval/)
 [![Python](https://img.shields.io/pypi/pyversions/oaei-bioml-eval)](https://pypi.org/project/oaei-bioml-eval/)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/OAEI-ML/OAEI-Bio-ML-eval/blob/main/LICENSE)
 
 OAEI-Bio-ML-eval is the shared, versioned scoring package for the public and
 organiser-facing OAEI Bio-ML repositories. Version 0.2.0 supports Python 3.10+
@@ -33,7 +33,7 @@ The reasoner extra installs compatible 0.1-series releases of `pyowl-core`,
 `pyHermiT`, and `pyelk-reasoner`. Supported wheels require neither Java nor a
 local Rust/C compiler; dependency-level accelerated implementations may be used
 when available, while their compiler-free implementations preserve portability.
-See [installation and deployment](docs/installation.md).
+See [installation and deployment](https://github.com/OAEI-ML/OAEI-Bio-ML-eval/blob/main/docs/installation.md).
 
 ## Python quick start
 
@@ -91,7 +91,7 @@ Path, byte, stream, provider, and existing-view inputs are also accepted by the
 `*_files` wrappers. Each source and target input is coerced once through
 `pyowl-core`; one zero-copy composite is shared by signature calculation and
 reasoning. OAEI-Bio-ML-eval never imports Exact-OM, so dependency direction
-remains clean. See [coherence API and semantics](docs/coherence.md).
+remains clean. See [coherence API and semantics](https://github.com/OAEI-ML/OAEI-Bio-ML-eval/blob/main/docs/coherence.md).
 
 ## Aggregation policy
 
@@ -115,12 +115,12 @@ and ordinary CI.
 
 ## Release information
 
-- [Documentation index](docs/index.md)
-- [0.2 migration guide](docs/migration-0.2.md)
-- [changelog](CHANGELOG.md)
-- [SPDX SBOM](SBOM.spdx.json)
-- [native-stack specification](specs/0.2.0-native-owl-stack.md)
-- [release evidence](reports/O5-release.md)
+- [Documentation index](https://github.com/OAEI-ML/OAEI-Bio-ML-eval/blob/main/docs/index.md)
+- [0.2 migration guide](https://github.com/OAEI-ML/OAEI-Bio-ML-eval/blob/main/docs/migration-0.2.md)
+- [changelog](https://github.com/OAEI-ML/OAEI-Bio-ML-eval/blob/main/CHANGELOG.md)
+- [SPDX SBOM](https://github.com/OAEI-ML/OAEI-Bio-ML-eval/blob/main/SBOM.spdx.json)
+- [native-stack specification](https://github.com/OAEI-ML/OAEI-Bio-ML-eval/blob/main/specs/0.2.0-native-owl-stack.md)
+- [release evidence](https://github.com/OAEI-ML/OAEI-Bio-ML-eval/blob/main/reports/O5-release.md)
 
 Licensed under Apache-2.0. Optional dependencies retain their own licenses; see
-[dependency and license notes](docs/installation.md#dependency-and-license-boundary).
+[dependency and license notes](https://github.com/OAEI-ML/OAEI-Bio-ML-eval/blob/main/docs/installation.md#dependency-and-license-boundary).

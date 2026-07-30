@@ -743,10 +743,10 @@ def _compiler_diagnostics(session: Any) -> dict[str, JsonValue] | None:
 
 
 def _validate_compiler_handoff(value: object) -> dict[str, JsonValue]:
-    """Validate the optional, currently unadvertised encoded-schema attestation.
+    """Validate an advertised encoded-schema attestation.
 
-    This metadata is compatibility evidence only.  It neither selects a reasoner path nor
-    proves that a particular session used encoded-native compilation.
+    This metadata is compatibility evidence only. It neither selects a reasoner
+    path nor proves that a particular session used encoded-native compilation.
     """
 
     if not isinstance(value, Mapping):
