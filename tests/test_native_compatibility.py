@@ -37,11 +37,31 @@ class TestNativeCompatibilityContract(unittest.TestCase):
         )
         reasoners = self.contract["reasoners"]
         self.assertEqual(
+            self.contract["sibling_consumers"],
+            {
+                "pyowl2vec-star-projector": {
+                    "repository": "https://github.com/OAEI-ML/pyOwl2Vec-Star-projector",
+                    "production_release_commit": (
+                        "fd8631ef2c318d7d2a478e38b55654a925c32f05"
+                    ),
+                    "production_release_tree": (
+                        "686b21bfbc1ecb850f156805368cfa21e25b3f0e"
+                    ),
+                    "production_release_version": "0.1.1",
+                    "dependency_relationship": "none",
+                }
+            },
+        )
+        self.assertNotIn(
+            "pyowl2vec-star-projector",
+            self.contract["dependency_constraints"],
+        )
+        self.assertEqual(
             reasoners["pyelk"],
             {
                 "repository": "https://github.com/OAEI-ML/pyELK",
-                "production_release_commit": ("66c879847e88ae57e3efc2e2296c67a8fe74ce29"),
-                "production_release_tree": ("19b89ea7691fb8feaf93161f041f2eac477581dc"),
+                "production_release_commit": ("b6794e2cee6739a4d0eda557adbda53b660947c4"),
+                "production_release_tree": ("bf1361c79710ea462fae124661befde846df4dea"),
                 "production_release_version": "0.1.1",
                 "historical_production_release": {
                     "commit": "487de1cf47ba72b6adb85cd809e0358b28c391dc",
