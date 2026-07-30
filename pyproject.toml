@@ -47,6 +47,8 @@ all = [
 ]
 
 [project.urls]
+Homepage = "https://github.com/OAEI-ML/OAEI-Bio-ML-eval"
+Documentation = "https://github.com/OAEI-ML/OAEI-Bio-ML-eval/tree/main/docs"
 Repository = "https://github.com/OAEI-ML/OAEI-Bio-ML-eval"
 Issues = "https://github.com/OAEI-ML/OAEI-Bio-ML-eval/issues"
 Specifications = "https://github.com/OAEI-ML/OAEI-Bio-ML-eval/tree/main/specs"

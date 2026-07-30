@@ -1,5 +1,9 @@
 # OAEI-Bio-ML-eval
 
+[![PyPI](https://img.shields.io/pypi/v/oaei-bioml-eval)](https://pypi.org/project/oaei-bioml-eval/)
+[![Python](https://img.shields.io/pypi/pyversions/oaei-bioml-eval)](https://pypi.org/project/oaei-bioml-eval/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 OAEI-Bio-ML-eval is the shared, versioned scoring package for the public and
 organiser-facing OAEI Bio-ML repositories. Version 0.2.0 supports Python 3.10+
 and removes Java from the evaluation runtime.
@@ -30,6 +34,22 @@ The reasoner extra installs compatible 0.1-series releases of `pyowl-core`,
 local Rust/C compiler; dependency-level accelerated implementations may be used
 when available, while their compiler-free implementations preserve portability.
 See [installation and deployment](docs/installation.md).
+
+## Python quick start
+
+The metric core accepts ordinary Python collections and has no runtime
+dependencies:
+
+```python
+from oaei_bioml_eval.equivalence import global_prf1
+
+predicted = {("mouse:Heart", "human:Heart"), ("mouse:Liver", "human:Liver")}
+reference = {("mouse:Heart", "human:Heart")}
+
+scores = global_prf1(predicted, reference)
+assert scores["precision"] == 0.5
+assert scores["recall"] == 1.0
+```
 
 ## CLI
 
@@ -94,6 +114,7 @@ and ordinary CI.
 
 ## Release information
 
+- [Documentation index](docs/index.md)
 - [0.2 migration guide](docs/migration-0.2.md)
 - [changelog](CHANGELOG.md)
 - [SPDX SBOM](SBOM.spdx.json)
