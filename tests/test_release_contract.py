@@ -50,8 +50,20 @@ class TestReleaseContract(unittest.TestCase):
             ROOT / "docs" / "installation.md",
             ROOT / "docs" / "migration-0.2.md",
             ROOT / "SBOM.spdx.json",
+            ROOT / "release" / "owner-release-override.md",
         ):
             self.assertTrue(path.is_file(), path)
+
+    def test_release_owner_override_is_explicit_and_does_not_rewrite_evidence(
+        self,
+    ) -> None:
+        authorization = (
+            ROOT / "release" / "owner-release-override.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("authorizes production publication", authorization)
+        self.assertIn("accountable owner waiver", authorization)
+        self.assertIn("does not rewrite the historical measurements", authorization)
+        self.assertIn("remain mandatory operational checks", authorization)
 
     def test_sbom_matches_declared_release(self) -> None:
         payload = cast(

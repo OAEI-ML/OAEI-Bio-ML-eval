@@ -8,11 +8,11 @@ runtime dependencies. RDF parsing and native coherence reasoning are explicit
 extras, and the evaluator consumes the shared `pyowl-core` ontology view rather
 than reparsing ontology inputs for each reasoner.
 
-This is release-preparation evidence, not a claim that the complete ecosystem is
-ready for public deployment. Publication remains gated on final 0.1-series
-`pyowl-core`, pyHermiT, and pyELK distributions, acceptable native reasoner
-performance on large ontologies, and the external-data acceptance runs described
-below.
+This report preserves the release-preparation evidence and the limitations
+known when it was captured. On 2026-07-30, the release owner authorized
+production publication and closed the remaining external gates through
+[`release/owner-release-override.md`](../release/owner-release-override.md).
+That decision does not relabel an unexecuted test as passed.
 
 ## Release contract
 
@@ -122,13 +122,16 @@ and cached-view profile. Licensed SNOMED-scale inputs remain unavailable. The of
 was not rerun end to end; only installed deployment, scoring smokes, and the pinned NCIT-DOID
 acceptance run were performed.
 
-Accordingly, the bounded O5 implementation is complete enough to commit and hand
-off, while publication/deployment remains blocked by:
+At the time of this evidence capture, publication/deployment was blocked by:
 
 1. final compatible 0.1-series sibling releases;
 2. further native performance optimization and repeatable large-ontology benchmarks;
 3. NCIT-scale performance acceptance and the licensed SNOMED-scale gate; and
 4. an end-to-end official leaderboard dry run on the resolved release artefacts.
+
+Those retained limitations are explicitly accepted for 0.2.0 by the
+release-owner authorization. Artifact inspection, clean installation, and
+post-upload PyPI verification still apply.
 
 ## Reproduction
 
