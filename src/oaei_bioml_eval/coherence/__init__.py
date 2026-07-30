@@ -11,10 +11,10 @@ value:
     the same over each query's rank-1 commitment. Native pyHermiT provides the exact
     DL result; a cooperative HermiT timeout alone falls back to pyELK over the same
     composite and is labeled as an EL lower bound.
-  * PROXY (dependency-free, participant self-guidance): `structural_coherence_proxy`
-    — a reasoner-free structural heuristic (STUB until its rules are fixed).
+  * RESERVED PROXY API: `structural_coherence_proxy` — unavailable while its
+    rule set remains open; the current stub raises `NotImplementedError`.
 
-The metric core (`metrics`) + proxy (`structural`) remain dependency-free. Native
+The metric core (`metrics`) remains dependency-free. Native
 reasoner packages are imported lazily only by official classification. This module
 does not touch the frozen typed/ API.
 """

@@ -66,7 +66,8 @@ oaei-bioml-coherence-score local local.test.ranked.tsv source.owl target.owl \
 Coherence is a degree of incoherence: `0` is clean and larger values are worse.
 HermiT is the exact default. A cooperative HermiT timeout alone falls back to
 ELK over the same composite and marks the result as an EL lower bound. The
-`structural` command is a distinctly labeled, non-official proxy.
+reserved `structural` command is not currently available: its rule set remains
+open and invoking it raises `NotImplementedError`.
 
 ## Shared-view API
 

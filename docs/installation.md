@@ -10,7 +10,7 @@ extension and does not require a compiler.
 
 | Command | Surface | Added dependencies |
 |---|---|---|
-| `pip install oaei-bioml-eval` | TSV metrics and structural proxy | none |
+| `pip install oaei-bioml-eval` | Track 1 and Track 2 TSV metrics | none |
 | `pip install 'oaei-bioml-eval[rdf]'` | OAEI Alignment RDF | RDFLib 7.x |
 | `pip install 'oaei-bioml-eval[reasoner]'` | official coherence | pyowl-core, pyHermiT, pyELK 0.1.x |
 | `pip install 'oaei-bioml-eval[all]'` | all supported surfaces | both groups |

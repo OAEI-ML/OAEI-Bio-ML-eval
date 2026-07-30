@@ -26,8 +26,8 @@ classifiers = [
   "Typing :: Typed",
 ]
 # Kept deliberately light so participants can self-score with a small install.
-# The typed-ranking metrics (Track 2) and the structural-coherence proxy are
-# dependency-free; native reasoners remain an explicit optional installation.
+# The Track 1 and Track 2 TSV metrics are dependency-free; RDF input and native
+# reasoners remain explicit optional installations.
 dependencies = []
 
 [project.optional-dependencies]

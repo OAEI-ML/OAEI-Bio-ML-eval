@@ -78,7 +78,7 @@ strict mypy passes all 28 checked source/tool files. The final
 source archive contains the release documentation, specifications, reports,
 SBOM, licence, and typed package sources.
 
-## Performance measurements and release blocker
+## Performance measurements and accepted limitation
 
 These measurements use the prospective final pure-Python sibling wheel stack on
 the local Python 3.12 runner. They are diagnostic measurements, not scale
@@ -94,8 +94,11 @@ The pyELK workload was approximately 3.3 times slower than the earlier O3
 Python-3.12 measurement (6.044 s versus 1.848 s). The small pyHermiT workload was
 approximately 7.6 times slower (32.106 s versus 4.22 s). Exact outputs still
 matched, but these regressions fail the intended performance gate. O5 therefore
-does **not** accept large-ontology performance. Native work in pyHermiT/pyELK
-(WPR2-WPR4) must close this blocker before ecosystem release.
+did **not** accept large-ontology performance when this evidence was captured.
+The release owner subsequently accepted that retained limitation for 0.2.0 in
+[`release/owner-release-override.md`](../release/owner-release-override.md).
+Native optimization in pyHermiT/pyELK (WPR2-WPR4) remains post-release work; it
+is not represented here as completed performance acceptance.
 
 For completeness, the bridge run recorded a 3.336 s cold provenance build and a
 0.018 s warm build. The pyELK run encoded 385,780 wire bytes and spent 1.203 s in
