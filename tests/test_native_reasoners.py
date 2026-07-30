@@ -244,7 +244,7 @@ class _ELKSession:
 
 def _pyhermit_module() -> types.ModuleType:
     module = types.ModuleType("pyhermit")
-    module.__version__ = "0.1.0"
+    module.__version__ = "0.1.1"
     module.Reasoner = _HermiTSession
     module.ReasonerConfig = _HermiTConfig
     module.InconsistentOntologyError = _HermiTInconsistentError

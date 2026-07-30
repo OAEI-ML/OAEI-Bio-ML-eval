@@ -30,9 +30,14 @@
     },
     "pyhermit": {
       "repository": "https://github.com/OAEI-ML/pyHermiT",
-      "production_release_commit": "2bbc4d6e2d01747367b9f3d497f14c9da1012bb1",
-      "production_release_tree": "1c5dfb414704880942298359a4424dca55fc588c",
-      "production_release_version": "0.1.0",
+      "production_release_commit": "1b153139f97820f675f90bea8182e38c51c3d5e2",
+      "production_release_tree": "c269f52667092dd76bf43d61fef388031e774482",
+      "production_release_version": "0.1.1",
+      "historical_production_release": {
+        "commit": "2bbc4d6e2d01747367b9f3d497f14c9da1012bb1",
+        "tree": "1c5dfb414704880942298359a4424dca55fc588c",
+        "version": "0.1.0"
+      },
       "final_attestation_commit": "af8f7fc669b28dfc15728c84c78f9094787d288b",
       "attestation_source_commit": "3dd752b1ccff643dc874bbb47cf9d2eb08b6ae3c",
       "runtime_contract_commit": "f0d4ebb270f3521b848cd2a858761afd66e72ae2",

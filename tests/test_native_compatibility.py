@@ -64,12 +64,17 @@ class TestNativeCompatibilityContract(unittest.TestCase):
             {
                 "repository": "https://github.com/OAEI-ML/pyHermiT",
                 "production_release_commit": (
-                    "2bbc4d6e2d01747367b9f3d497f14c9da1012bb1"
+                    "1b153139f97820f675f90bea8182e38c51c3d5e2"
                 ),
                 "production_release_tree": (
-                    "1c5dfb414704880942298359a4424dca55fc588c"
+                    "c269f52667092dd76bf43d61fef388031e774482"
                 ),
-                "production_release_version": "0.1.0",
+                "production_release_version": "0.1.1",
+                "historical_production_release": {
+                    "commit": "2bbc4d6e2d01747367b9f3d497f14c9da1012bb1",
+                    "tree": "1c5dfb414704880942298359a4424dca55fc588c",
+                    "version": "0.1.0",
+                },
                 "final_attestation_commit": (
                     "af8f7fc669b28dfc15728c84c78f9094787d288b"
                 ),
