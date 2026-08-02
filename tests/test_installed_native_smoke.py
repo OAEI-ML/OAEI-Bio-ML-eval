@@ -144,7 +144,7 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
         handoff = {
             "owner_kind": "composite",
             "core_encoded_view_schemas": {
-                installed_native_smoke._ENCODED_SCHEMA: 1
+                installed_native_smoke._ENCODED_SCHEMA: 2
             },
             "reasoner_encoded_schema": dict(
                 installed_native_smoke._EXPECTED_REASONER_SCHEMA
@@ -189,7 +189,7 @@ class TestInstalledNativeOwnerMatrixContract(unittest.TestCase):
             **handoff,
             "reasoner_encoded_schema": {
                 **installed_native_smoke._EXPECTED_REASONER_SCHEMA,
-                "schema_version": 2,
+                "schema_version": 1,
             },
         }
         with self.assertRaisesRegex(RuntimeError, "exact public reasoner encoded schema"):

@@ -39,17 +39,17 @@ _VERSION = re.compile(
     r"(?:(?:a|b|rc)\d+|(?:\.dev|\.post)\d+|[.+-].*)?$"
 )
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_EXPECTED_REASONER_LINE = (0, 1)
+_EXPECTED_REASONER_LINE = (0, 2)
 _MAX_WORKER_RESPONSE_BYTES = 16 * 1024 * 1024
 _WORKER_SHUTDOWN_SECONDS = 1.0
 
-# Frozen pyowl-core encoded-view v1 compatibility fence.  OAEI never requests or
+# Frozen pyowl-core encoded-view v2 compatibility fence.  OAEI never requests or
 # inspects these buffers; it only validates an optional public reasoner attestation.
 _ENCODED_SCHEMA_NAME = "pyowl-core/structural-columns"
-_ENCODED_SCHEMA_VERSION = 1
-_ENCODED_MODEL_SCHEMA = 1
+_ENCODED_SCHEMA_VERSION = 2
+_ENCODED_MODEL_SCHEMA = 2
 _ENCODED_DESCRIPTOR_SHA256 = (
-    "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5"
+    "c51d0eb7ecf6f29ad3495fe7c40a2ea6741cf03a7cf194d51417bb810df90f51"
 )
 _ENCODED_BUFFER_WIDTHS = {
     "field_kinds": 1,
@@ -528,7 +528,7 @@ def _reasoner_version(module: ModuleType, distribution: str) -> str:
             or tuple(map(int, match.groups()[:2])) != _EXPECTED_REASONER_LINE
         ):
             raise NativeReasonerCompatibilityError(
-                f"incompatible {distribution} version {value!r}; expected >=0.1,<0.2"
+                f"incompatible {distribution} version {value!r}; expected >=0.2,<0.3"
             )
     if (
         module_value is not None
@@ -869,11 +869,11 @@ def _validate_encoded_session_handoff(
         consumer="oaei-bioml-eval",
         consumer_version=OAEI_VERSION,
         consumer_api="coherence-provenance/1",
-        package_api=(0, 1),
+        package_api=(0, 2),
         adapter_protocol=1,
         model_schema=_ENCODED_MODEL_SCHEMA,
         wire_major=1,
-        minimum_wire_minor=0,
+        minimum_wire_minor=2,
         required_encoded_view_schemas={
             _ENCODED_SCHEMA_NAME: _ENCODED_SCHEMA_VERSION,
         },

@@ -12,6 +12,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import oaei_bioml_eval
+
 from oaei_bioml_eval.coherence.bridge import (
     analyze_correspondences,
     compose_alignment_views,
@@ -66,7 +68,7 @@ class _Class:
 
 class _Backend:
     name = "python"
-    package_version = "0.1.0.dev0"
+    package_version = "0.2.0"
     implementation_version = "test-double-v1"
     ir_schema_version = 1
     accelerated = False
@@ -91,10 +93,10 @@ _ENCODED_BUFFER_WIDTHS = {
 def _compiler_handoff():
     return {
         "schema_name": "pyowl-core/structural-columns",
-        "schema_version": 1,
-        "model_schema": 1,
+        "schema_version": 2,
+        "model_schema": 2,
         "descriptor_sha256": (
-            "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5"
+            "c51d0eb7ecf6f29ad3495fe7c40a2ea6741cf03a7cf194d51417bb810df90f51"
         ),
         "buffer_widths": dict(_ENCODED_BUFFER_WIDTHS),
     }
@@ -129,11 +131,11 @@ def _encoded_counters(**overrides):
 
 
 class _CoreContract:
-    package_version = "0.1.0.dev0"
-    api_version = (0, 1)
+    package_version = "0.2.0"
+    api_version = (0, 2)
     adapter_protocol = 1
-    model_schema = 1
-    wire_format = (1, 1)
+    model_schema = 2
+    wire_format = (1, 2)
 
     @classmethod
     def current(cls):
@@ -244,7 +246,7 @@ class _ELKSession:
 
 def _pyhermit_module() -> types.ModuleType:
     module = types.ModuleType("pyhermit")
-    module.__version__ = "0.1.1"
+    module.__version__ = "0.2.0"
     module.Reasoner = _HermiTSession
     module.ReasonerConfig = _HermiTConfig
     module.InconsistentOntologyError = _HermiTInconsistentError
@@ -254,7 +256,7 @@ def _pyhermit_module() -> types.ModuleType:
 
 def _pyelk_module() -> types.ModuleType:
     module = types.ModuleType("pyelk")
-    module.__version__ = "0.1.0"
+    module.__version__ = "0.2.0"
     module.Reasoner = _ELKSession
     module.ReasonerConfig = _ELKConfig
     return module
@@ -269,7 +271,7 @@ def _success_worker(connection, wire_path, fingerprints):
             "inconsistent": False,
             "reasoner": {
                 "name": "python",
-                "package_version": "0.1.0.dev0",
+                "package_version": "0.2.0",
             },
             "profile": {"complete": True, "reasons": []},
             "wire_verified": fingerprints == {"logical_fingerprint": "a" * 64},
@@ -325,7 +327,7 @@ class TestCapabilityBoundary(unittest.TestCase):
 
     def test_incomplete_frozen_facade_fails_without_fallback(self):
         module = types.ModuleType("pyhermit")
-        module.__version__ = "0.1.0.dev0"
+        module.__version__ = "0.2.0"
         with (
             mock.patch(
                 "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
@@ -337,23 +339,23 @@ class TestCapabilityBoundary(unittest.TestCase):
 
     def test_incompatible_reasoner_version_fails_explicitly(self):
         module = _pyhermit_module()
-        module.__version__ = "0.2.0"
+        module.__version__ = "0.1.2"
         with (
             mock.patch(
                 "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
                 return_value=module,
             ),
-            self.assertRaisesRegex(NativeReasonerCompatibilityError, "expected >=0.1,<0.2"),
+            self.assertRaisesRegex(NativeReasonerCompatibilityError, "expected >=0.2,<0.3"),
         ):
             HermiTReasoner().unsatisfiable_classes_view(object(), which="hermit", timeout_s=1.0)
 
     def test_module_and_installed_distribution_version_drift_fails_closed(self):
         module = _pyelk_module()
-        module.__version__ = "0.1.0.dev0"
+        module.__version__ = "0.2.0"
         with (
             mock.patch(
                 "oaei_bioml_eval.coherence.native_reasoners.importlib.metadata.version",
-                return_value="0.1.1",
+                return_value="0.2.1",
             ),
             mock.patch(
                 "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
@@ -376,7 +378,7 @@ class TestCapabilityBoundary(unittest.TestCase):
         with (
             mock.patch(
                 "oaei_bioml_eval.coherence.native_reasoners.importlib.metadata.version",
-                return_value="0.1.0.dev0",
+                return_value="0.2.0",
             ) as version,
             mock.patch(
                 "oaei_bioml_eval.coherence.native_reasoners.importlib.import_module",
@@ -385,10 +387,10 @@ class TestCapabilityBoundary(unittest.TestCase):
         ):
             result = ELKReasoner().unsatisfiable_classes_view(object(), which="elk", timeout_s=None)
         version.assert_called_once_with("pyelk-reasoner")
-        self.assertEqual(result.provenance["package_version"], "0.1.0.dev0")
+        self.assertEqual(result.provenance["package_version"], "0.2.0")
 
     def test_absent_compiler_handoff_is_a_scalar_compatible_noop(self):
-        metadata = _backend_metadata(types.SimpleNamespace(backend=_Backend()), "0.1.0.dev0")
+        metadata = _backend_metadata(types.SimpleNamespace(backend=_Backend()), "0.2.0")
         self.assertNotIn("compiler_handoff", metadata)
         self.assertNotIn("compiler_diagnostics", metadata)
 
@@ -400,7 +402,7 @@ class TestCapabilityBoundary(unittest.TestCase):
         ontology = types.SimpleNamespace(
             capabilities=types.SimpleNamespace(
                 adapter_protocol=1,
-                model_schema=1,
+                model_schema=2,
             )
         )
         require_compatible = mock.Mock(side_effect=lambda view, _requirement: view)
@@ -412,11 +414,11 @@ class TestCapabilityBoundary(unittest.TestCase):
         metadata = {
             "name": "native",
             "accelerated": True,
-            "core_api_version": [0, 1],
+            "core_api_version": [0, 2],
             "core_adapter_protocol_version": 1,
-            "core_model_schema_version": 1,
-            "core_package_version": "0.1.0.dev0",
-            "core_wire_format_version": [1, 1],
+            "core_model_schema_version": 2,
+            "core_package_version": "0.2.0",
+            "core_wire_format_version": [1, 2],
             "compiler_handoff": _compiler_handoff(),
             "compiler_diagnostics": {
                 "ingestion_path": "encoded-native",
@@ -436,15 +438,15 @@ class TestCapabilityBoundary(unittest.TestCase):
             requirement.values,
             {
                 "consumer": "oaei-bioml-eval",
-                "consumer_version": "0.2.0",
+                "consumer_version": oaei_bioml_eval.__version__,
                 "consumer_api": "coherence-provenance/1",
-                "package_api": (0, 1),
+                "package_api": (0, 2),
                 "adapter_protocol": 1,
-                "model_schema": 1,
+                "model_schema": 2,
                 "wire_major": 1,
-                "minimum_wire_minor": 0,
+                "minimum_wire_minor": 2,
                 "required_encoded_view_schemas": {
-                    "pyowl-core/structural-columns": 1
+                    "pyowl-core/structural-columns": 2
                 },
             },
         )
@@ -454,7 +456,7 @@ class TestCapabilityBoundary(unittest.TestCase):
         ontology = types.SimpleNamespace(
             capabilities=types.SimpleNamespace(
                 adapter_protocol=1,
-                model_schema=1,
+                model_schema=2,
             )
         )
         encoded = {
@@ -502,17 +504,17 @@ class TestCapabilityBoundary(unittest.TestCase):
         ontology = types.SimpleNamespace(
             capabilities=types.SimpleNamespace(
                 adapter_protocol=1,
-                model_schema=1,
+                model_schema=2,
             )
         )
         base = {
             "name": "native",
             "accelerated": True,
-            "core_api_version": [0, 1],
+            "core_api_version": [0, 2],
             "core_adapter_protocol_version": 1,
-            "core_model_schema_version": 1,
-            "core_package_version": "0.1.0.dev0",
-            "core_wire_format_version": [1, 1],
+            "core_model_schema_version": 2,
+            "core_package_version": "0.2.0",
+            "core_wire_format_version": [1, 2],
             "compiler_handoff": _compiler_handoff(),
             "compiler_diagnostics": {
                 "ingestion_path": "encoded-native",
@@ -521,7 +523,7 @@ class TestCapabilityBoundary(unittest.TestCase):
         }
         cases = (
             (
-                {**base, "core_model_schema_version": 2},
+                {**base, "core_model_schema_version": 1},
                 lambda view, _requirement: view,
                 "core_model_schema_version",
             ),
@@ -531,12 +533,12 @@ class TestCapabilityBoundary(unittest.TestCase):
                 "core_package_version",
             ),
             (
-                {**base, "core_api_version": [0, 2]},
+                {**base, "core_api_version": [0, 1]},
                 lambda view, _requirement: view,
                 "core_api_version",
             ),
             (
-                {**base, "core_wire_format_version": [1, 0]},
+                {**base, "core_wire_format_version": [1, 1]},
                 lambda view, _requirement: view,
                 "core_wire_format_version",
             ),
@@ -599,7 +601,7 @@ class TestCapabilityBoundary(unittest.TestCase):
         ontology = types.SimpleNamespace(
             capabilities=types.SimpleNamespace(
                 adapter_protocol=1,
-                model_schema=1,
+                model_schema=2,
             )
         )
         adapters = types.SimpleNamespace(
@@ -713,7 +715,7 @@ class TestCapabilityBoundary(unittest.TestCase):
         ontology = types.SimpleNamespace(
             capabilities=types.SimpleNamespace(
                 adapter_protocol=1,
-                model_schema=1,
+                model_schema=2,
             )
         )
         adapters = types.SimpleNamespace(
@@ -927,7 +929,7 @@ class TestCapabilityBoundary(unittest.TestCase):
     def test_descriptor_and_model_schema_drift_fail_closed(self):
         for field, value in (
             ("descriptor_sha256", "0" * 64),
-            ("model_schema", 2),
+            ("model_schema", 1),
             ("model_schema", True),
             ("schema_version", True),
         ):
@@ -1133,7 +1135,7 @@ class TestELKAdapter(unittest.TestCase):
         ontology = types.SimpleNamespace(
             capabilities=types.SimpleNamespace(
                 adapter_protocol=1,
-                model_schema=1,
+                model_schema=2,
             )
         )
         adapters = types.SimpleNamespace(

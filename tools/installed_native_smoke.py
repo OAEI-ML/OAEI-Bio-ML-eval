@@ -38,7 +38,7 @@ WORKER_REGRESSION_MATRIX_SCHEMA = (
 )
 _ENCODED_SCHEMA = "pyowl-core/structural-columns"
 _ENCODED_DESCRIPTOR_SHA256 = (
-    "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5"
+    "c51d0eb7ecf6f29ad3495fe7c40a2ea6741cf03a7cf194d51417bb810df90f51"
 )
 _ENCODED_BUFFER_WIDTHS = {
     "field_kinds": 1,
@@ -56,9 +56,9 @@ _ENCODED_BUFFER_WIDTHS = {
 _EXPECTED_REASONER_SCHEMA = {
     "buffer_widths": _ENCODED_BUFFER_WIDTHS,
     "descriptor_sha256": _ENCODED_DESCRIPTOR_SHA256,
-    "model_schema": 1,
+    "model_schema": 2,
     "schema_name": _ENCODED_SCHEMA,
-    "schema_version": 1,
+    "schema_version": 2,
 }
 _REQUIRED_PUBLIC_COUNTERS = (
     "base_flattening_bytes",
@@ -235,7 +235,7 @@ def _require_encoded_handoff(
     if handoff.get("owner_kind") != "composite":
         raise RuntimeError(f"{label} did not retain the public composite owner")
     schemas = handoff.get("core_encoded_view_schemas")
-    if not isinstance(schemas, Mapping) or schemas.get(_ENCODED_SCHEMA) != 1:
+    if not isinstance(schemas, Mapping) or schemas.get(_ENCODED_SCHEMA) != 2:
         raise RuntimeError(f"{label} lacks the frozen encoded structural schema")
     reasoner_schema = handoff.get("reasoner_encoded_schema")
     if reasoner_schema != _EXPECTED_REASONER_SCHEMA:

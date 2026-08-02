@@ -41,11 +41,11 @@ def _compiler_handoff() -> dict[str, object]:
             "scalar_bytes": 1,
         },
         "descriptor_sha256": (
-            "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5"
+            "c51d0eb7ecf6f29ad3495fe7c40a2ea6741cf03a7cf194d51417bb810df90f51"
         ),
-        "model_schema": 1,
+        "model_schema": 2,
         "schema_name": "pyowl-core/structural-columns",
-        "schema_version": 1,
+        "schema_version": 2,
     }
 
 
@@ -120,7 +120,7 @@ class _AttestingAdapter(CoherenceReasoner):
         provenance = {
             "schema": "native-reasoner-provenance/1",
             "package": "pyHermiT" if self.reasoner == "hermit" else "pyELK",
-            "package_version": "0.1.0.dev0",
+            "package_version": "0.2.0",
             "backend": backend,
             "transport": {"mode": "in-process-identity"},
             "profile": {"complete": True, "reasons": []},
@@ -282,7 +282,7 @@ class TestPublicOwnerHandoff(unittest.TestCase):
             False,
             {
                 "name": "rust",
-                "package_version": "0.1.0.dev0",
+                "package_version": "0.2.0",
                 "compiler_handoff": _compiler_handoff(),
                 "compiler_diagnostics": {
                     "ingestion_path": "encoded-native",

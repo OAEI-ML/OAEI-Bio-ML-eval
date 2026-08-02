@@ -434,7 +434,14 @@ if _pyowl_core is not None:
             self.assertIsInstance(merged, _pyowl_core.OntologyComposite)
             self.assertIs(merged.members[0].view, source)
             self.assertIs(merged.members[1].view, target)
-            self.assertEqual(tuple(merged.member_roles.values()), ("source", "target"))
+            self.assertEqual(
+                [(id(member.view), member.role) for member in merged.provenance_tree],
+                [(id(source), "source"), (id(target), "target")],
+            )
+            self.assertEqual(
+                set(merged.member_roles.values()),
+                {"source", "target"},
+            )
             self.assertIs(_pyowl_core.coerce_snapshot(merged), merged)
             self.assertEqual(len(stub.view_calls), 1)
 
