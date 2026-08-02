@@ -12,8 +12,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import oaei_bioml_eval
-
+from oaei_bioml_eval import __version__ as OAEI_VERSION
 from oaei_bioml_eval.coherence.bridge import (
     analyze_correspondences,
     compose_alignment_views,
@@ -438,7 +437,7 @@ class TestCapabilityBoundary(unittest.TestCase):
             requirement.values,
             {
                 "consumer": "oaei-bioml-eval",
-                "consumer_version": oaei_bioml_eval.__version__,
+                "consumer_version": OAEI_VERSION,
                 "consumer_api": "coherence-provenance/1",
                 "package_api": (0, 2),
                 "adapter_protocol": 1,

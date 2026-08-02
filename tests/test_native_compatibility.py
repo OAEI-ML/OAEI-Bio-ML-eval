@@ -16,9 +16,24 @@ class TestNativeCompatibilityContract(unittest.TestCase):
     def setUp(self) -> None:
         self.contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
 
-    def test_exact_production_releases_and_historical_attestations_are_bound(self) -> None:
+    def test_final_stack_and_historical_attestations_are_bound(self) -> None:
+        self.assertEqual(self.contract["release_pin_status"], "final")
+        self.assertEqual(self.contract["pending_final_pins"], [])
         self.assertEqual(
             self.contract["tested_core"],
+            {
+                "repository": "https://github.com/OAEI-ML/pyOWLCore",
+                "commit": "422a63363e0b67857eebfca6dd67595ebaad7a09",
+                "tree": "56dc47d73870a786a1248d89bf10a89155fcffff",
+                "version": "0.2.0",
+                "api_version": [0, 2],
+                "model_schema": 2,
+                "wire_format": [1, 2],
+                "adapter_protocol": 1,
+            },
+        )
+        self.assertEqual(
+            self.contract["historical_tested_core"],
             {
                 "repository": "https://github.com/OAEI-ML/pyOWLCore",
                 "commit": "b0d8fd27537b2f177cfe9a5e0fd41f33b9f18f19",
@@ -27,7 +42,7 @@ class TestNativeCompatibilityContract(unittest.TestCase):
             },
         )
         self.assertEqual(
-            self.contract["historical_tested_core"],
+            self.contract["legacy_development_core"],
             {
                 "repository": "https://github.com/OAEI-ML/pyOWLCore",
                 "commit": "005c3ccad129757b3a9be125dc064b812b607ef5",
@@ -42,12 +57,17 @@ class TestNativeCompatibilityContract(unittest.TestCase):
                 "pyowl2vec-star-projector": {
                     "repository": "https://github.com/OAEI-ML/pyOwl2Vec-Star-projector",
                     "production_release_commit": (
-                        "a0f800c1223dc7e66b0fab8a49417ade7b690568"
+                        "e04973c6b794b5a379aa5f3392dfd6573a3336a5"
                     ),
                     "production_release_tree": (
-                        "893ef426e452a55d5aa67856621775746755c558"
+                        "eb48642ceb53dd35ce0417672f5e72953c1e2e22"
                     ),
-                    "production_release_version": "0.1.1",
+                    "production_release_version": "0.2.0",
+                    "prior_production_release": {
+                        "commit": "a0f800c1223dc7e66b0fab8a49417ade7b690568",
+                        "tree": "893ef426e452a55d5aa67856621775746755c558",
+                        "version": "0.1.1",
+                    },
                     "dependency_relationship": "none",
                 }
             },
@@ -60,9 +80,14 @@ class TestNativeCompatibilityContract(unittest.TestCase):
             reasoners["pyelk"],
             {
                 "repository": "https://github.com/OAEI-ML/pyELK",
-                "production_release_commit": ("169361c17f23a50e9bc6837617dd7881dcd28be8"),
-                "production_release_tree": ("bc5072e3aa206a04361f3d492e7d43f7d8542e2a"),
-                "production_release_version": "0.1.1",
+                "production_release_commit": ("ac8926f646ba5c4a5aba700cff8f159112880ac8"),
+                "production_release_tree": ("4e404fc275cedbbc2f0b54e7f27971edf4826cf1"),
+                "production_release_version": "0.2.0",
+                "prior_production_release": {
+                    "commit": "169361c17f23a50e9bc6837617dd7881dcd28be8",
+                    "tree": "bc5072e3aa206a04361f3d492e7d43f7d8542e2a",
+                    "version": "0.1.1",
+                },
                 "historical_production_release": {
                     "commit": "487de1cf47ba72b6adb85cd809e0358b28c391dc",
                     "tree": "39940247e95ccc6e3ec8353a670541d6ff8b8ec3",
@@ -78,9 +103,14 @@ class TestNativeCompatibilityContract(unittest.TestCase):
             reasoners["pyhermit"],
             {
                 "repository": "https://github.com/OAEI-ML/pyHermiT",
-                "production_release_commit": ("742bd71b3e9c2d38ba170561e5b4d26f240dccfd"),
-                "production_release_tree": ("56753deb518099dfae1cb72dd8564c7bb3cca58a"),
-                "production_release_version": "0.1.2",
+                "production_release_commit": ("e371e15cdbc0e83098887aedba831520ede2a1a7"),
+                "production_release_tree": ("45da63645a3cfc86a9c0d859700bd9a1144f0650"),
+                "production_release_version": "0.2.0",
+                "prior_production_release": {
+                    "commit": "742bd71b3e9c2d38ba170561e5b4d26f240dccfd",
+                    "tree": "56753deb518099dfae1cb72dd8564c7bb3cca58a",
+                    "version": "0.1.2",
+                },
                 "historical_production_release": {
                     "commit": "777725b3bf054dfc0bd0d3b98cc133c4b0469ca1",
                     "tree": "019fc1c2a4c7002ca8985e06c5b9942b7ba26c12",
@@ -127,9 +157,23 @@ class TestNativeCompatibilityContract(unittest.TestCase):
     def test_owner_and_transport_scope_is_exact(self) -> None:
         self.assertEqual(
             self.contract["schema"],
-            "oaei-bioml-eval.core-compatibility/2",
+            "oaei-bioml-eval.core-compatibility/3",
         )
         runtime = self.contract["oaei_runtime"]
+        self.assertEqual(runtime["package_version"], "0.2.1")
+        self.assertEqual(
+            runtime["implementation_subject"],
+            {
+                "repository": "https://github.com/OAEI-ML/OAEI-Bio-ML-eval",
+                "commit": "b0d061e405147cc8684b3e7fd22ed366bd2ca452",
+                "tree": "1c6c0773d5af93c2bf3769eabeb3b228d4f1eb8b",
+                "version": "0.2.1",
+            },
+        )
+        self.assertEqual(runtime["required_core_api"], [0, 2])
+        self.assertEqual(runtime["required_model_schema"], 2)
+        self.assertEqual(runtime["required_wire_format"], [1, 2])
+        self.assertEqual(runtime["required_adapter_protocol"], 1)
         self.assertEqual(
             runtime["handoff_baseline_commit"],
             "fd75aedbf9f5ed4351d3f6d634a6e07721d21778",
