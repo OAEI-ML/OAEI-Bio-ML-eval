@@ -17,4 +17,4 @@ Planned surface (see OAEI-Bio-ML-private/docs/PROJECT.md §4):
                  rule set remains open
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"

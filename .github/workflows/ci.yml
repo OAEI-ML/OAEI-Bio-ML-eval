@@ -70,5 +70,5 @@ jobs:
           python -m venv /tmp/oaei-wheel-smoke
           /tmp/oaei-wheel-smoke/bin/python -m pip install --no-deps dist/*.whl
           /tmp/oaei-wheel-smoke/bin/python -c \
-            'import oaei_bioml_eval; assert oaei_bioml_eval.__version__ == "0.2.0"'
+            'import oaei_bioml_eval; assert oaei_bioml_eval.__version__ == "0.2.1"'
           /tmp/oaei-wheel-smoke/bin/python -m oaei_bioml_eval.coherence.cli --help

@@ -26,8 +26,8 @@ def _metadata_value(name: str) -> str:
 
 class TestReleaseContract(unittest.TestCase):
     def test_version_and_python_floor_move_together(self) -> None:
-        self.assertEqual(_metadata_value("version"), "0.2.0")
-        self.assertEqual(oaei_bioml_eval.__version__, "0.2.0")
+        self.assertEqual(_metadata_value("version"), "0.2.1")
+        self.assertEqual(oaei_bioml_eval.__version__, "0.2.1")
         self.assertEqual(_metadata_value("requires-python"), ">=3.10")
         for version in ("3.10", "3.11", "3.12", "3.13", "3.14"):
             self.assertIn(f"Programming Language :: Python :: {version}", PYPROJECT)
@@ -37,9 +37,9 @@ class TestReleaseContract(unittest.TestCase):
         self.assertRegex(project, r"(?m)^dependencies = \[\]$")
         reasoner = PYPROJECT.split("reasoner = [", 1)[1].split("]", 1)[0]
         for requirement in (
-            "pyowl-core>=0.1,<0.2",
-            "pyHermiT>=0.1,<0.2",
-            "pyelk-reasoner>=0.1,<0.2",
+            "pyowl-core>=0.2,<0.3",
+            "pyHermiT>=0.2,<0.3",
+            "pyelk-reasoner>=0.2,<0.3",
         ):
             self.assertIn(requirement, reasoner)
         self.assertIn('rdf = ["rdflib>=7.0,<8"]', PYPROJECT)
@@ -77,7 +77,7 @@ class TestReleaseContract(unittest.TestCase):
         packages = {
             package["name"]: package for package in cast(list[dict[str, Any]], payload["packages"])
         }
-        self.assertEqual(packages["oaei-bioml-eval"]["versionInfo"], "0.2.0")
+        self.assertEqual(packages["oaei-bioml-eval"]["versionInfo"], "0.2.1")
         self.assertEqual(
             set(packages),
             {
@@ -88,6 +88,8 @@ class TestReleaseContract(unittest.TestCase):
                 "rdflib",
             },
         )
+        for name in ("pyowl-core", "pyHermiT", "pyelk-reasoner"):
+            self.assertEqual(packages[name]["versionInfo"], ">=0.2,<0.3")
         self.assertEqual(packages["pyHermiT"]["licenseDeclared"], "LGPL-3.0-or-later")
 
     def test_ci_covers_supported_python_matrix(self) -> None:
@@ -118,9 +120,11 @@ class TestReleaseContract(unittest.TestCase):
         self.assertIn("cmp dist-a/*.whl dist-b/*.whl", workflow)
         self.assertIn("cmp dist-a/*.tar.gz dist-b/*.tar.gz", workflow)
         self.assertIn("python tools/audit_release.py", workflow)
-        self.assertIn("pyowl-core==0.1.1", workflow)
-        self.assertIn("pyHermiT==0.1.2", workflow)
-        self.assertIn("pyelk-reasoner==0.1.1", workflow)
+        self.assertIn('compatibility["release_pin_status"] == "final"', workflow)
+        self.assertIn('compatibility["pending_final_pins"] == []', workflow)
+        self.assertIn("pyowl-core==0.2.0", workflow)
+        self.assertIn("pyHermiT==0.2.0", workflow)
+        self.assertIn("pyelk-reasoner==0.2.0", workflow)
         self.assertIn("--owner-matrix --require-encoded", workflow)
         self.assertIn("actions/attest-build-provenance@", workflow)
         self.assertIn("environment: pypi", workflow)

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "oaei-bioml-eval"
-version = "0.2.0"
+version = "0.2.1"
 description = "Common evaluation/scoring logic for the OAEI Bio-ML tracks (public + private)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,15 +35,15 @@ dependencies = []
 # (The metric core + the alignment-TSV path stay dependency-free.)
 rdf = ["rdflib>=7.0,<8"]
 reasoner = [
-  "pyowl-core>=0.1,<0.2",
-  "pyHermiT>=0.1,<0.2",
-  "pyelk-reasoner>=0.1,<0.2",
+  "pyowl-core>=0.2,<0.3",
+  "pyHermiT>=0.2,<0.3",
+  "pyelk-reasoner>=0.2,<0.3",
 ]
 all = [
   "rdflib>=7.0,<8",
-  "pyowl-core>=0.1,<0.2",
-  "pyHermiT>=0.1,<0.2",
-  "pyelk-reasoner>=0.1,<0.2",
+  "pyowl-core>=0.2,<0.3",
+  "pyHermiT>=0.2,<0.3",
+  "pyelk-reasoner>=0.2,<0.3",
 ]
 
 [project.urls]

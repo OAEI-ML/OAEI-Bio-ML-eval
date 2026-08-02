@@ -1,7 +1,7 @@
 {
   "SPDXID": "SPDXRef-DOCUMENT",
   "creationInfo": {
-    "created": "2026-07-17T00:00:00Z",
+    "created": "2026-08-02T00:00:00Z",
     "creators": [
       "Organization: OAEI-ML",
       "Tool: OAEI-Bio-ML-eval release audit"
@@ -11,8 +11,8 @@
   "documentDescribes": [
     "SPDXRef-Package-OAEI-Bio-ML-eval"
   ],
-  "documentNamespace": "https://github.com/OAEI-ML/OAEI-Bio-ML-eval/sbom/0.2.0/2026-07-17",
-  "name": "oaei-bioml-eval-0.2.0",
+  "documentNamespace": "https://github.com/OAEI-ML/OAEI-Bio-ML-eval/sbom/0.2.1/2026-08-02",
+  "name": "oaei-bioml-eval-0.2.1",
   "packages": [
     {
       "SPDXID": "SPDXRef-Package-OAEI-Bio-ML-eval",
@@ -21,7 +21,7 @@
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
-          "referenceLocator": "pkg:pypi/oaei-bioml-eval@0.2.0",
+          "referenceLocator": "pkg:pypi/oaei-bioml-eval@0.2.1",
           "referenceType": "purl"
         }
       ],
@@ -31,7 +31,7 @@
       "name": "oaei-bioml-eval",
       "primaryPackagePurpose": "LIBRARY",
       "supplier": "Organization: OAEI-ML",
-      "versionInfo": "0.2.0"
+      "versionInfo": "0.2.1"
     },
     {
       "SPDXID": "SPDXRef-Package-RDFLib",
@@ -69,7 +69,7 @@
       "name": "pyowl-core",
       "primaryPackagePurpose": "LIBRARY",
       "supplier": "Organization: OAEI-ML",
-      "versionInfo": ">=0.1,<0.2"
+      "versionInfo": ">=0.2,<0.3"
     },
     {
       "SPDXID": "SPDXRef-Package-pyHermiT",
@@ -88,7 +88,7 @@
       "name": "pyHermiT",
       "primaryPackagePurpose": "LIBRARY",
       "supplier": "Organization: OAEI-ML",
-      "versionInfo": ">=0.1,<0.2"
+      "versionInfo": ">=0.2,<0.3"
     },
     {
       "SPDXID": "SPDXRef-Package-pyelk-reasoner",
@@ -107,7 +107,7 @@
       "name": "pyelk-reasoner",
       "primaryPackagePurpose": "LIBRARY",
       "supplier": "Organization: OAEI-ML",
-      "versionInfo": ">=0.1,<0.2"
+      "versionInfo": ">=0.2,<0.3"
     }
   ],
   "relationships": [
