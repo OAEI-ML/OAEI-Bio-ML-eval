@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/OAEI-ML/OAEI-Bio-ML-eval/blob/main/LICENSE)
 
 OAEI-Bio-ML-eval is the shared, versioned scoring package for the public and
-organiser-facing OAEI Bio-ML repositories. Version 0.2.0 supports Python 3.10+
+organiser-facing OAEI Bio-ML repositories. Version 0.2.1 supports Python 3.10+
 and removes Java from the evaluation runtime.
 
 The package provides:
@@ -29,7 +29,7 @@ python -m pip install 'oaei-bioml-eval[reasoner]'
 python -m pip install 'oaei-bioml-eval[all]'
 ```
 
-The reasoner extra installs compatible 0.1-series releases of `pyowl-core`,
+The reasoner extra installs compatible 0.2-series releases of `pyowl-core`,
 `pyHermiT`, and `pyelk-reasoner`. Supported wheels require neither Java nor a
 local Rust/C compiler; dependency-level accelerated implementations may be used
 when available, while their compiler-free implementations preserve portability.

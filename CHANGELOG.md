@@ -3,6 +3,19 @@
 All notable changes are documented here. This project follows Semantic
 Versioning for its public package and CLI contracts.
 
+## 0.2.1 - 2026-08-02
+
+### Changed
+
+- The optional reasoner stack now requires the coordinated `0.2.x` releases of
+  `pyowl-core`, `pyHermiT`, and `pyelk-reasoner`.
+- Encoded-native handoff validation now negotiates pyOWLCore API `(0, 2)`, model
+  schema 2, wire format `(1, 2)`, and `structural-columns` schema 2.
+- Release smoke tests and provenance fences reject stale model-schema-1
+  reasoners instead of silently accepting or converting their views.
+
+Track 1, Track 2, and coherence metric semantics are unchanged.
+
 ## 0.2.0 - 2026-07-17
 
 ### Added

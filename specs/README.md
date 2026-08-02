@@ -6,9 +6,9 @@ behavior is documented in the root README and `docs/`; work-package evidence is
 kept in `reports/`.
 
 [`0.2.x-encoded-reasoner-compatibility.md`](0.2.x-encoded-reasoner-compatibility.md) is the
-successor compatibility/performance plan for pyowl-core encoded views and the updated native
-reasoners. It deliberately keeps buffer decoding inside pyELK/pyHermiT and does not change metric
-semantics.
+normative 0.2.1 successor record for pyOWLCore 0.2/schema-2 encoded views and
+the updated native reasoners. It deliberately keeps buffer decoding inside
+pyELK/pyHermiT and does not change metric semantics.
 
 ## Release intent
 

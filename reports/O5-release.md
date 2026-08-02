@@ -8,6 +8,11 @@ runtime dependencies. RDF parsing and native coherence reasoning are explicit
 extras, and the evaluator consumes the shared `pyowl-core` ontology view rather
 than reparsing ontology inputs for each reasoner.
 
+This report is historical evidence for 0.2.0. The 0.2.1 successor migrates to
+pyOWLCore 0.2/schema 2 and requires final exact pyOWLCore, pyHermiT, and pyELK
+revision pins plus an installed native matrix before publication; the current
+state is recorded in `release/core-compatibility.json`.
+
 This report preserves the release-preparation evidence and the limitations
 known when it was captured. On 2026-07-30, the release owner authorized
 production publication and closed the remaining external gates through

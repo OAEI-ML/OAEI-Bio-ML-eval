@@ -2,7 +2,7 @@
 
 ## Supported Python
 
-OAEI-Bio-ML-eval 0.2.0 requires Python 3.10 or newer. CI covers CPython 3.10,
+OAEI-Bio-ML-eval 0.2.1 requires Python 3.10 or newer. CI covers CPython 3.10,
 3.11, 3.12, 3.13, and 3.14. The installable evaluator itself contains no native
 extension and does not require a compiler.
 
@@ -12,7 +12,7 @@ extension and does not require a compiler.
 |---|---|---|
 | `pip install oaei-bioml-eval` | Track 1 and Track 2 TSV metrics | none |
 | `pip install 'oaei-bioml-eval[rdf]'` | OAEI Alignment RDF | RDFLib 7.x |
-| `pip install 'oaei-bioml-eval[reasoner]'` | official coherence | pyowl-core, pyHermiT, pyELK 0.1.x |
+| `pip install 'oaei-bioml-eval[reasoner]'` | official coherence | pyowl-core, pyHermiT, pyELK 0.2.x |
 | `pip install 'oaei-bioml-eval[all]'` | all supported surfaces | both groups |
 
 Use a locked deployment environment for leaderboard jobs. Store the installed
@@ -20,9 +20,9 @@ distribution list and emitted coherence provenance next to every result. Do not
 combine numbers with different metric-methodology or reasoner versions without
 an explicit methodology review.
 
-Publish in dependency order: `pyowl-core` 0.1.x, then pyHermiT and pyELK 0.1.x,
+Publish in dependency order: `pyowl-core` 0.2.x, then pyHermiT and pyELK 0.2.x,
 then OAEI-Bio-ML-eval 0.2.x. Pip correctly rejects development prereleases when
-the reasoner metadata requests a final 0.1 core; do not bypass that check in an
+the reasoner metadata requests a final 0.2 core; do not bypass that check in an
 official wheelhouse.
 
 ## Compiler-free and accelerated execution
@@ -45,9 +45,9 @@ Build a wheelhouse on a connected machine for the exact target platform:
 
 ```bash
 python -m pip download --only-binary=:all: \
-  'oaei-bioml-eval[all]==0.2.0' -d wheelhouse
+  'oaei-bioml-eval[all]==0.2.1' -d wheelhouse
 python -m pip install --no-index --find-links wheelhouse \
-  'oaei-bioml-eval[all]==0.2.0'
+  'oaei-bioml-eval[all]==0.2.1'
 ```
 
 Smoke-test all three commands and one native fixture before promoting the

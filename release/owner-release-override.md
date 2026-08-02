@@ -1,12 +1,18 @@
-# Release-owner authorization for 0.2.0
+# Release-owner authorization for 0.2.x
 
 Date: 2026-07-30
 
-The release owner authorizes production publication of
+The following paragraph records the historical `0.2.0` authorization. The
+release owner authorizes production publication of
 `oaei-bioml-eval` 0.2.0 and closes the remaining external release gates for
 this initial publication. This authorization covers environment-protected PyPI
 trusted publication in dependency order after the final compatible 0.1-series
 sibling artifacts have passed their package checks.
+
+The owner's 2026-08-02 production instruction extends this authorization to
+the `0.2.1` compatibility patch after the final compatible 0.2-series
+pyOWLCore, pyHermiT, and pyELK artifacts pass their package and installed-stack
+checks. It does not authorize publishing a provisional source pin.
 
 The decision explicitly accepts the retained limitations recorded in
 `reports/O5-release.md`: the available DOID-scale performance evidence,

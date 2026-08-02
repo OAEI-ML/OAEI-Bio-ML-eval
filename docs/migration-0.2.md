@@ -7,7 +7,7 @@ Official coherence now requires the `reasoner` extra and consumes shared
 backend.
 
 ```bash
-python -m pip install --upgrade 'oaei-bioml-eval[reasoner]==0.2.0'
+python -m pip install --upgrade 'oaei-bioml-eval[reasoner]==0.2.1'
 ```
 
 Replace backend selection with `--reasoner hermit` or `--reasoner elk`:
@@ -22,6 +22,11 @@ Replace backend selection with `--reasoner hermit` or `--reasoner elk`:
 
 Passing a removed process/backend flag produces `was removed in 0.2.0` instead
 of attempting a compatibility shim.
+
+Version 0.2.1 moves the complete optional reasoner stack to the pyOWLCore 0.2
+contract. Environments must upgrade `pyowl-core`, `pyHermiT`, and
+`pyelk-reasoner` together; model-schema-1 views and encoded attestations are
+rejected rather than converted.
 
 ## Reusing an Exact-OM load
 
