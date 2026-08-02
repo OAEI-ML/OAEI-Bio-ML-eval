@@ -9,8 +9,8 @@
   },
   "tested_core": {
     "repository": "https://github.com/OAEI-ML/pyOWLCore",
-    "commit": "422a63363e0b67857eebfca6dd67595ebaad7a09",
-    "tree": "56dc47d73870a786a1248d89bf10a89155fcffff",
+    "commit": "d39fe9c9bb9513db8c14fe2bc6d4864377901ad1",
+    "tree": "d29bbcc65684c5a246b5d952a91d8a62e07e1b35",
     "version": "0.2.0",
     "api_version": [0, 2],
     "model_schema": 2,
@@ -32,8 +32,8 @@
   "sibling_consumers": {
     "pyowl2vec-star-projector": {
       "repository": "https://github.com/OAEI-ML/pyOwl2Vec-Star-projector",
-      "production_release_commit": "e04973c6b794b5a379aa5f3392dfd6573a3336a5",
-      "production_release_tree": "eb48642ceb53dd35ce0417672f5e72953c1e2e22",
+      "production_release_commit": "e96ce0018d02f20ae2473d3ef2f9f40f948e5d59",
+      "production_release_tree": "7c9237e1f1858b63c504187e8e5be3539ddfdd91",
       "production_release_version": "0.2.0",
       "prior_production_release": {
         "commit": "a0f800c1223dc7e66b0fab8a49417ade7b690568",
@@ -46,8 +46,8 @@
   "reasoners": {
     "pyelk": {
       "repository": "https://github.com/OAEI-ML/pyELK",
-      "production_release_commit": "ac8926f646ba5c4a5aba700cff8f159112880ac8",
-      "production_release_tree": "4e404fc275cedbbc2f0b54e7f27971edf4826cf1",
+      "production_release_commit": "b7b373165f6cbc3452f022c542731d7b5f2f73be",
+      "production_release_tree": "b31a882c8d96a9907ceeaa8c6a40bb77890c94af",
       "production_release_version": "0.2.0",
       "prior_production_release": {
         "commit": "169361c17f23a50e9bc6837617dd7881dcd28be8",
@@ -66,8 +66,8 @@
     },
     "pyhermit": {
       "repository": "https://github.com/OAEI-ML/pyHermiT",
-      "production_release_commit": "e371e15cdbc0e83098887aedba831520ede2a1a7",
-      "production_release_tree": "45da63645a3cfc86a9c0d859700bd9a1144f0650",
+      "production_release_commit": "c4bdbbc7581281cd46803a5c0eafd1f8a1f3c2af",
+      "production_release_tree": "c9ef2915b8df669e64a6f0d6c4900d6e859bfaf0",
       "production_release_version": "0.2.0",
       "prior_production_release": {
         "commit": "742bd71b3e9c2d38ba170561e5b4d26f240dccfd",
